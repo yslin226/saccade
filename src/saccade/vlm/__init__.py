@@ -1,12 +1,13 @@
 """VLM implementations bundled with Saccade.
 
-``FakeVLM`` is here in M0. The Pydantic AI adapter — the one place that knows
-about ``BinaryContent`` — arrives in M1.
+``PydanticAIVLM`` is the one place that knows about ``BinaryContent``;
+``FakeVLM`` is the scripted stand-in for tests.
 """
 
 from __future__ import annotations
 
 from saccade.vlm._cache import FileCache, MemoryCache, make_cache_key
 from saccade.vlm.fake import FakeVLM
+from saccade.vlm.pydantic_ai import PydanticAIVLM
 
-__all__ = ["FakeVLM", "FileCache", "MemoryCache", "make_cache_key"]
+__all__ = ["FakeVLM", "FileCache", "MemoryCache", "PydanticAIVLM", "make_cache_key"]
