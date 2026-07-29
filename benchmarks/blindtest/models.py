@@ -50,7 +50,12 @@ def build_vlm(model: str) -> VLMPort:
     deployment = model.split(":", 1)[1] or os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")
     endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
     api_key = os.environ.get("AZURE_OPENAI_API_KEY")
-    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-01-01")
+
+    # No default for the API version. A guessed one is worse than none: a
+    # version the resource does not serve returns "404 Resource not found",
+    # which reads as a missing deployment and sends you hunting for the
+    # wrong bug. Demanding the value names the real problem immediately.
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION")
 
     missing = [
         name
@@ -58,6 +63,7 @@ def build_vlm(model: str) -> VLMPort:
             ("AZURE_OPENAI_ENDPOINT", endpoint),
             ("AZURE_OPENAI_API_KEY", api_key),
             ("AZURE_OPENAI_DEPLOYMENT", deployment),
+            ("AZURE_OPENAI_API_VERSION", api_version),
         )
         if not value
     ]

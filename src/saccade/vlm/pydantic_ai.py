@@ -48,9 +48,11 @@ class PydanticAIVLM:
 
     Args:
         model: A model string with a provider prefix
-            (``"google:gemini-2.5-flash"``, ``"openai:gpt-5.2"``), or a
-            constructed ``Model`` instance. OpenAI-compatible endpoints —
-            GLM, Qwen, OpenRouter, Ollama — need the instance form:
+            (``"google:gemini-flash-latest"``, ``"openai:gpt-4.1"``), or a
+            constructed ``Model`` instance. Azure and other
+            OpenAI-compatible endpoints — GLM, Qwen, OpenRouter, Ollama —
+            need the instance form, because an endpoint and API version
+            cannot be expressed in a model string:
 
             >>> from pydantic_ai.models.openai import OpenAIChatModel
             >>> from pydantic_ai.providers.openai import OpenAIProvider

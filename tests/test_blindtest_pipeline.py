@@ -430,10 +430,31 @@ class TestModelBuilding:
 
         monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
         monkeypatch.setenv("AZURE_OPENAI_API_KEY", "x")
+        monkeypatch.setenv("AZURE_OPENAI_API_VERSION", "2024-10-21")
         monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
 
         with pytest.raises(RuntimeError, match="AZURE_OPENAI_DEPLOYMENT"):
             build_vlm("azure:")
+
+    def test_a_missing_api_version_is_demanded_not_guessed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A guessed version 404s, which reads as a missing deployment.
+
+        That is exactly what happened in practice: .env carried a version the
+        resource does not serve, the code defaulted to the same wrong value,
+        and every call returned "404 Resource not found" — sending the search
+        towards deployments rather than the version string.
+        """
+        from benchmarks.blindtest.models import build_vlm
+
+        monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "x")
+        monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "some-deployment")
+        monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+
+        with pytest.raises(RuntimeError, match="AZURE_OPENAI_API_VERSION"):
+            build_vlm("azure:some-deployment")
 
     def test_provider_rate_limits_have_defaults(self) -> None:
         from benchmarks.blindtest.models import default_rpm
