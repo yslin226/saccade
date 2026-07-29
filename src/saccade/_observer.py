@@ -19,18 +19,21 @@ __all__ = ["Observer"]
 
 logger = logging.getLogger("saccade")
 
-OBSERVE_PROMPT = """You are looking at a region of a larger image.
+OBSERVE_PROMPT = """You are looking at a region of a larger image, which may
+be the whole image or a magnified part of it.
 
-Question under investigation: {question}
+{question}
 
-Describe only what you can actually see in this view. State it plainly and
-concretely — positions, counts, whether things touch or cross. Do not guess
-at what falls outside the view, and do not infer what "should" be there.
+Answer that question, in exactly the format it asks for. Base the answer on
+what is visible in this view — do not guess at what falls outside it, and do
+not infer what "should" be there.
 
-If the view is too small, too blurred or too ambiguous to tell, say so
-explicitly rather than picking the more likely answer.
+If this view does not show enough to answer, say "CANNOT TELL" instead of
+picking the more likely option. A wrong confident answer is worse than an
+admitted uncertainty, because the next step can fix uncertainty and cannot
+fix misplaced confidence.
 
-Then give your confidence from 0.0 to 1.0 on the last line, formatted
+End with your confidence from 0.0 to 1.0 on its own final line, formatted
 exactly as: CONFIDENCE: <number>"""
 
 

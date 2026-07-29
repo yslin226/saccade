@@ -68,14 +68,28 @@ class EvidenceChain:
     def best_statement(self) -> str | None:
         """The most defensible statement recorded so far.
 
-        A verified observation beats an unverified one regardless of how
-        confident the model sounded — that preference is the whole point.
-        Among equals, the most recent wins, since later looks are better
-        informed.
+        Three rules, in order:
+
+        1. A step that could not answer is skipped. Later looks are often
+           magnified corners that no longer contain what the question is
+           about, and taking the last statement blindly means answering with
+           "I cannot tell from this view" after an earlier step answered it.
+        2. A verified observation beats an unverified one, regardless of how
+           confident the model sounded. That preference is the whole point.
+        3. Among equals the most recent wins, since later looks are better
+           informed.
         """
-        verified = self.verified_steps
+        verified = [step for step in self.verified_steps if _is_answer(step)]
         if verified:
             return verified[-1].observation.statement
+
+        answered = [step for step in self._steps if _is_answer(step)]
+        if answered:
+            return answered[-1].observation.statement
+
+        # Nothing conclusive. Report the last thing seen rather than nothing,
+        # so the caller can tell the difference between "no answer" and
+        # "never looked".
         if self._steps:
             return self._steps[-1].observation.statement
         return None
@@ -85,3 +99,21 @@ class EvidenceChain:
 
     def __bool__(self) -> bool:
         return bool(self._steps)
+
+
+# What a model says when the view does not settle the question. The observer
+# prompt asks for the first form; the others are what models produce anyway.
+_NON_ANSWERS = (
+    "cannot tell",
+    "can't tell",
+    "cannot determine",
+    "unable to determine",
+    "not possible to tell",
+    "insufficient",
+)
+
+
+def _is_answer(step: EvidenceStep) -> bool:
+    """Whether a step actually answered, rather than declining to."""
+    lowered = step.observation.statement.lower()
+    return not any(phrase in lowered for phrase in _NON_ANSWERS)

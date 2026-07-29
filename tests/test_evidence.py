@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from saccade._evidence import EvidenceChain
 from saccade.models import BBox, Observation, Verification, Viewport
 
@@ -143,3 +145,77 @@ class TestBestStatement:
         chain.add(action_name="look", viewport=view(), observation=Observation(statement="a"))
         chain.add(action_name="look", viewport=view(), observation=Observation(statement="b"))
         assert chain.best_statement() == "b"
+
+
+class TestNonAnswersAreSkipped:
+    """Regression from a live BlindTest run.
+
+    Later steps are often magnified corners that no longer contain what the
+    question is about. Taking the last statement blindly meant answering
+    "I cannot tell from this view" after an earlier step had answered it.
+    """
+
+    def test_an_earlier_answer_beats_a_later_refusal(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes, the circles touch."),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(),
+            observation=Observation(statement="CANNOT TELL from this view."),
+        )
+        assert chain.best_statement() == "Yes, the circles touch."
+
+    def test_a_verified_answer_beats_a_verified_refusal(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="No, they are apart."),
+            verification=passed(),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(),
+            observation=Observation(statement="Unable to determine."),
+            verification=passed(),
+        )
+        assert chain.best_statement() == "No, they are apart."
+
+    @pytest.mark.parametrize(
+        "refusal",
+        [
+            "CANNOT TELL",
+            "I cannot tell from this crop.",
+            "It is not possible to tell.",
+            "Unable to determine the answer.",
+            "This view has insufficient detail.",
+        ],
+    )
+    def test_recognised_refusal_forms(self, refusal: str) -> None:
+        chain = EvidenceChain()
+        chain.add(action_name="look", viewport=view(), observation=Observation(statement="Yes."))
+        chain.add(action_name="zoom", viewport=view(), observation=Observation(statement=refusal))
+        assert chain.best_statement() == "Yes."
+
+    def test_all_refusals_still_report_something(self) -> None:
+        """ "No answer" and "never looked" must remain distinguishable."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="CANNOT TELL"),
+        )
+        assert chain.best_statement() == "CANNOT TELL"
+
+    def test_a_normal_answer_is_not_mistaken_for_a_refusal(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="No, the circles do not touch."),
+        )
+        assert chain.best_statement() == "No, the circles do not touch."

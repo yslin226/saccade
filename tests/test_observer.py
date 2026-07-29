@@ -33,8 +33,20 @@ class TestObserve:
 
     async def test_prompt_tells_the_model_it_may_say_it_cannot_tell(self) -> None:
         """Forcing a guess is how a blind model produces confident nonsense."""
-        assert "too ambiguous" in OBSERVE_PROMPT
-        assert "rather than picking the more likely answer" in OBSERVE_PROMPT
+        collapsed = " ".join(OBSERVE_PROMPT.split())
+        assert "CANNOT TELL" in collapsed
+        assert "instead of picking the more likely option" in collapsed
+
+    async def test_prompt_asks_for_an_answer_not_a_description(self) -> None:
+        """Regression from a live run.
+
+        The prompt used to say "describe what you can see", which overrode
+        the benchmark's own "Answer with Yes/No" and produced paragraphs of
+        scenery instead of answers.
+        """
+        collapsed = " ".join(OBSERVE_PROMPT.split())
+        assert "in exactly the format it asks for" in collapsed
+        assert "Describe only what you can actually see" not in collapsed
 
     async def test_raw_response_is_returned_alongside(self) -> None:
         vlm = FakeVLM(["a circle"])
