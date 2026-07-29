@@ -17,6 +17,12 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
 
+    # Without this, every `uv run` re-reads .python-version (3.11), tears down
+    # the environment the matrix just built, and recreates it without the
+    # extras — so all three jobs silently run 3.11 and lose OpenCV.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +31,15 @@ jobs:
           enable-cache: true
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev --python ${{ matrix.python-version }}
+        run: uv sync --all-extras --dev
+
+      - name: Confirm the interpreter and extras under test
+        run: |
+          uv run python -c "import sys; print('python', sys.version)"
+          uv run python -c "import cv2; print('opencv', cv2.__version__)"
+          uv run python -c "import sys; assert sys.version_info[:2] == tuple(
+              int(p) for p in '${{ matrix.python-version }}'.split('.')
+          ), f'expected ${{ matrix.python-version }}, got {sys.version_info[:2]}'"
 
       - name: Lint
         run: uv run ruff check src tests
