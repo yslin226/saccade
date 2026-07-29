@@ -22,7 +22,7 @@ from typing import Any
 import httpx
 from PIL import Image
 
-__all__ = ["DEFAULT_CACHE_DIR", "TASKS", "BlindTestItem", "load_task"]
+__all__ = ["DEFAULT_CACHE_DIR", "TASKS", "BlindTestItem", "load_task", "stratified_sample"]
 
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parent / "data"
 
@@ -134,6 +134,27 @@ def load_task(
 
     store.save(items, offset)
     return items
+
+
+def stratified_sample(items: list[BlindTestItem], n: int) -> list[BlindTestItem]:
+    """Take ``n`` items spread evenly across the dataset, not the first ``n``.
+
+    The dataset is ordered by difficulty parameter, so the leading items are
+    all the same kind of question. A run over the first ten Touching Circles
+    items gets seven identical "clearly overlapping" cases and a model that
+    always answered Yes would score 70% — a number that says nothing.
+
+    Taking every k-th item instead covers the range, including the
+    near-tangent cases where the benchmark is actually hard. Deterministic,
+    so the sample is the same on every run.
+    """
+    if n >= len(items):
+        return list(items)
+    if n <= 0:
+        return []
+
+    stride = len(items) / n
+    return [items[int(i * stride)] for i in range(n)]
 
 
 class _Store:

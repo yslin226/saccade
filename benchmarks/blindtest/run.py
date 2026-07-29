@@ -29,7 +29,13 @@ from typing import TypeVar
 
 from dotenv import load_dotenv
 
-from benchmarks.blindtest.dataset import TASKS, BlindTestItem, load_task
+from benchmarks.blindtest.dataset import (
+    TASKS,
+    BlindTestItem,
+    load_task,
+    stratified_sample,
+)
+from benchmarks.blindtest.models import build_vlm, default_rpm
 from benchmarks.blindtest.scoring import score
 from saccade import ActiveVisionAgent, VLMError
 from saccade.ports import VLMPort
@@ -211,6 +217,7 @@ async def run(
     vlm: VLMPort | None = None,
     progress: bool = True,
     rpm: int = 0,
+    stratify: bool = False,
 ) -> RunReport:
     """Run one task in one mode.
 
@@ -227,17 +234,26 @@ async def run(
         progress: Print per-item progress.
         rpm: Requests-per-minute budget. 0 disables pacing, which is what
             the tests want; live runs should pass the provider's real limit.
+        stratify: Spread the sample across the dataset instead of taking the
+            first ``limit`` items, which would all be the same difficulty.
     """
     if mode not in ("baseline", "saccade"):
         raise ValueError(f"mode must be 'baseline' or 'saccade', got {mode!r}")
 
     if vlm is None:
-        from saccade.vlm.pydantic_ai import PydanticAIVLM
-
-        vlm = PydanticAIVLM(model)
+        vlm = build_vlm(model)
 
     cache = FileCache(cache_dir) if cache_dir else FileCache()
-    items = load_task(task, limit=limit, offset=offset)
+
+    if stratify:
+        # Fetch a wide slice, then spread the sample across it. Taking the
+        # first N items gets N nearly identical questions — see
+        # stratified_sample for why that produces a meaningless number.
+        pool = load_task(task, limit=max(limit * 8, 100), offset=offset)
+        items = stratified_sample(pool, limit)
+    else:
+        items = load_task(task, limit=limit, offset=offset)
+
     if not items:
         raise RuntimeError(f"no items loaded for task {task!r}")
 
@@ -337,8 +353,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--rpm",
         type=int,
-        default=DEFAULT_RPM,
-        help=f"requests per minute (default {DEFAULT_RPM}, Gemini's free tier); 0 disables pacing",
+        default=0,
+        help="requests per minute; 0 uses the provider default (Gemini free tier is 20)",
+    )
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help="take the first N items instead of spreading the sample across difficulties",
     )
     parser.add_argument("--no-save", action="store_true")
     args = parser.parse_args(argv)
@@ -356,7 +377,8 @@ def main(argv: list[str] | None = None) -> int:
             offset=args.offset,
             max_steps=args.max_steps,
             cache_dir=args.cache_dir,
-            rpm=args.rpm,
+            rpm=args.rpm or default_rpm(args.model),
+            stratify=not args.sequential,
         )
     )
 

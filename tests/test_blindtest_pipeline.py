@@ -344,6 +344,105 @@ class TestDistinctItemsDoNotShareAnswers:
         assert key_a != key_b
 
 
+class TestStratifiedSampling:
+    """Taking the first N items measures one difficulty, not the task.
+
+    The dataset is ordered by difficulty parameter, so the first ten
+    Touching Circles items are seven identical "clearly overlapping" cases.
+    A model that always answered Yes would score 70% on that slice.
+    """
+
+    def test_sample_spans_the_pool(self) -> None:
+        from benchmarks.blindtest.dataset import stratified_sample
+
+        pool = [item("Yes", f"id{i:03d}") for i in range(100)]
+        sample = stratified_sample(pool, 10)
+
+        assert len(sample) == 10
+        assert sample[0] is pool[0]
+        # The last pick comes from the far end, not from the first tenth.
+        assert pool.index(sample[-1]) >= 80
+
+    def test_sample_is_deterministic(self) -> None:
+        from benchmarks.blindtest.dataset import stratified_sample
+
+        pool = [item("Yes", f"id{i:03d}") for i in range(50)]
+        assert [id(x) for x in stratified_sample(pool, 7)] == [
+            id(x) for x in stratified_sample(pool, 7)
+        ]
+
+    def test_no_duplicates(self) -> None:
+        from benchmarks.blindtest.dataset import stratified_sample
+
+        pool = [item("Yes", f"id{i:03d}") for i in range(37)]
+        sample = stratified_sample(pool, 12)
+        assert len({id(x) for x in sample}) == 12
+
+    def test_asking_for_more_than_exists_returns_everything(self) -> None:
+        from benchmarks.blindtest.dataset import stratified_sample
+
+        pool = [item("Yes", f"id{i:03d}") for i in range(5)]
+        assert len(stratified_sample(pool, 50)) == 5
+
+    def test_zero_and_empty(self) -> None:
+        from benchmarks.blindtest.dataset import stratified_sample
+
+        assert stratified_sample([item("Yes")], 0) == []
+        assert stratified_sample([], 5) == []
+
+
+class TestModelBuilding:
+    def test_a_plain_model_string_needs_no_azure_config(self) -> None:
+        from benchmarks.blindtest.models import build_vlm
+
+        vlm = build_vlm("google:gemini-flash-latest")
+        assert vlm.model_id == "google:gemini-flash-latest"
+
+    def test_azure_without_config_names_what_is_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """An opaque 401 partway through a run is worse than failing here."""
+        from benchmarks.blindtest.models import build_vlm
+
+        monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+        monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+
+        with pytest.raises(RuntimeError, match="AZURE_OPENAI_ENDPOINT"):
+            build_vlm("azure:gpt-4.1")
+
+    def test_bare_azure_falls_back_to_the_configured_deployment(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A single-deployment setup should not repeat the name every run."""
+        from benchmarks.blindtest.models import build_vlm
+
+        monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "x")
+        monkeypatch.setenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4.1")
+
+        # Endpoint is still missing, so it fails — but not on the deployment.
+        with pytest.raises(RuntimeError) as caught:
+            build_vlm("azure:")
+        assert "AZURE_OPENAI_DEPLOYMENT" not in str(caught.value)
+
+    def test_bare_azure_with_no_default_says_so(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from benchmarks.blindtest.models import build_vlm
+
+        monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://example.openai.azure.com/")
+        monkeypatch.setenv("AZURE_OPENAI_API_KEY", "x")
+        monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+        with pytest.raises(RuntimeError, match="AZURE_OPENAI_DEPLOYMENT"):
+            build_vlm("azure:")
+
+    def test_provider_rate_limits_have_defaults(self) -> None:
+        from benchmarks.blindtest.models import default_rpm
+
+        assert default_rpm("google:gemini-flash-latest") == 20
+        assert default_rpm("azure:gpt-4.1") == 60
+        assert default_rpm("something-unknown") == 20
+
+
 class TestRateLimiting:
     """Gemini's free tier allows 5 requests/minute, so pacing is mandatory."""
 
