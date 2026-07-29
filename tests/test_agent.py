@@ -1,8 +1,9 @@
 """Tests for the ActiveVisionAgent signature.
 
-The loop is M1 work. What M0 locks down is the shape of the public entry
-point — specifically that everything after ``vlm`` is keyword-only (rule 5),
-so M1 can add parameters without breaking anyone's calls.
+The loop's behaviour is covered in test_loop.py. What this file pins down is
+the shape of the public entry point — everything after ``vlm`` is
+keyword-only (rule 5), so later milestones can add parameters without
+breaking anyone's calls.
 """
 
 from __future__ import annotations
@@ -12,13 +13,6 @@ import inspect
 import pytest
 
 from saccade import ActiveVisionAgent
-from saccade.vlm import FakeVLM
-
-
-class TestNotYetImplemented:
-    def test_constructor_says_which_milestone(self) -> None:
-        with pytest.raises(NotImplementedError, match="M1"):
-            ActiveVisionAgent(FakeVLM(["yes"]))
 
 
 class TestKeywordOnlyContract:
