@@ -41,13 +41,22 @@ attention.
 
 ## Where this is now
 
-**M0 — skeleton and public types.** The API surface, data models, ports,
-exception hierarchy, geometry primitives and the architecture guard are in
-place and tested. The Perceive-Verify loop itself is M1; `ActiveVisionAgent`
-currently raises `NotImplementedError`.
+**M1 — the loop runs.** `ActiveVisionAgent` plans where to look, crops and
+magnifies, asks the model, and records an evidence chain. The BlindTest
+runner works end to end against real models, and a rerun reproduces a run
+exactly from cache.
 
-No benchmark numbers yet. There will be no claimed improvement here until M2
-produces one that can be reproduced.
+What is not done: the verifier has nothing to verify against yet. Confronting
+a claim with a measurement needs a tool that can measure — for two circles in
+a photograph, that means detecting the circles before the geometry can judge
+them. Until that lands, the loop is looking more than once but not checking
+itself, which is the half of the idea that matters.
+
+No accuracy figures here. Runs exist under `benchmarks/blindtest/results/`
+with per-item detail, but they measure a loop with its verification stage
+inert, so quoting them as the effect of active vision would be wrong. A
+comparison worth publishing arrives in M2, alongside the ablations that say
+which part did the work.
 
 ## How it works
 
@@ -100,8 +109,8 @@ build. The reasoning is in [CLAUDE.md](CLAUDE.md).
 ## Roadmap
 
 - [x] **M0** — skeleton, public types, architecture guard
-- [ ] **M1** — Perceive-Verify loop, three visual actions, response cache, first BlindTest number
-- [ ] **M2** — full BlindTest across models, plus ablations for which strategies actually help
+- [x] **M1** — Perceive-Verify loop, three visual actions, response cache, benchmark runner
+- [ ] **M2** — measurement tools so the verifier can do its job, full BlindTest across models, ablations for which strategies actually help
 - [ ] **M3** — Sandlot Baseball: pose estimation, metrics, run-to-run consistency
 - [ ] **M4** — active vision applied to occluded and motion-blurred frames
 - [ ] **M5** — retrieval-backed interpretation
