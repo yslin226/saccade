@@ -1,0 +1,18 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+node_modules/
+dist/
+build/
+*.egg-info/
+cache/
+data/videos/
+*.mp4
+*.mov
+models/*.pt
+
+# uv.lock MUST be committed — do not ignore it.
