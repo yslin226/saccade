@@ -32,7 +32,9 @@ FORBIDDEN_IMPORTS = {
 }
 
 # Rule 3: these modules reason about data handed to them; they never fetch it.
-PURE_MODULES = ("_planner.py", "_verifier.py", "_evidence.py", "geometry/")
+# The visual actions belong here too: they transform images passed in, and a
+# crop that could read from disk would put file paths into the evidence chain.
+PURE_MODULES = ("_planner.py", "_verifier.py", "_evidence.py", "geometry/", "actions/")
 
 FORBIDDEN_CALLS = {
     "cv2.imread",
