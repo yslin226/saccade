@@ -8,6 +8,9 @@ degenerate cases for every function.
 from __future__ import annotations
 
 import math
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
@@ -175,32 +178,88 @@ class TestOptionalOpenCV:
 
         assert geometry.circles_overlap is circles_overlap
 
-    def test_missing_opencv_gives_an_actionable_message(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Simulate an install without the geometry extra."""
-        import builtins
-        import sys
+    def test_missing_opencv_gives_an_actionable_message(self) -> None:
+        """Simulate an install without the geometry extra.
 
-        real_import = builtins.__import__
+        Run in a subprocess rather than by patching sys.modules: unimporting
+        saccade.geometry in this process leaks into whatever test collects
+        next, which is exactly the kind of order-dependent failure that only
+        shows up on someone else's machine.
+        """
+        script = textwrap.dedent(
+            """
+            import sys
 
-        def fail_on_cv2(name: str, *args: object, **kwargs: object) -> object:
-            if name == "cv2":
-                raise ImportError("No module named 'cv2'")
-            return real_import(name, *args, **kwargs)  # type: ignore[arg-type]
+            # Make `import cv2` fail the way a missing extra would.
+            class Blocker:
+                def find_module(self, name, path=None):
+                    return None
+                def find_spec(self, name, path=None, target=None):
+                    if name == "cv2" or name.startswith("cv2."):
+                        raise ImportError("No module named 'cv2'")
+                    return None
 
-        monkeypatch.delitem(sys.modules, "saccade.geometry", raising=False)
-        monkeypatch.delitem(sys.modules, "cv2", raising=False)
-        monkeypatch.setattr(builtins, "__import__", fail_on_cv2)
+            sys.modules.pop("cv2", None)
+            sys.meta_path.insert(0, Blocker())
 
-        with pytest.raises(ImportError, match=r"saccade-vision\[geometry\]"):
-            import saccade.geometry  # noqa: F401
+            try:
+                import saccade.geometry
+            except ImportError as exc:
+                print(exc)
+                sys.exit(0)
+            sys.exit("expected ImportError, got a successful import")
+            """
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert "saccade-vision[geometry]" in completed.stdout
 
-    def test_shapes_module_works_without_opencv(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Pure math must not be blocked by a missing optional dependency."""
-        import sys
+    def test_shapes_module_works_without_opencv(self) -> None:
+        """Pure math must not be blocked by a missing optional dependency.
 
-        monkeypatch.delitem(sys.modules, "cv2", raising=False)
-        from saccade.geometry.shapes import circles_overlap as pure_overlap
+        ``from saccade.geometry.shapes import ...`` would import the parent
+        package first and hit the OpenCV gate, so this loads the module
+        directly — which is what the verifier will need to do in M1 when
+        only the pure predicates are wanted.
+        """
+        script = textwrap.dedent(
+            """
+            import importlib.util
+            import pathlib
+            import sys
 
-        assert pure_overlap((0, 0), 5, (1, 0), 5) is True
+            class Blocker:
+                def find_spec(self, name, path=None, target=None):
+                    if name == "cv2" or name.startswith("cv2."):
+                        raise ImportError("No module named 'cv2'")
+                    return None
+
+            sys.modules.pop("cv2", None)
+            sys.meta_path.insert(0, Blocker())
+
+            import saccade
+            path = pathlib.Path(saccade.__file__).parent / "geometry" / "shapes.py"
+            spec = importlib.util.spec_from_file_location("_shapes", path)
+            shapes = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(shapes)
+
+            assert shapes.circles_overlap((0, 0), 5, (1, 0), 5) is True
+            assert shapes.count_line_intersections(
+                [((0, 0), (10, 10)), ((0, 10), (10, 0))]
+            ) == 1
+            print("ok")
+            """
+        )
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert "ok" in completed.stdout
