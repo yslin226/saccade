@@ -60,7 +60,14 @@ select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 
 [tool.mypy]
 strict = true
-python_version = "3.11"
+# No python_version pin: CI checks 3.11, 3.12 and 3.13, and mypy should
+# check against whichever interpreter it is actually running under.
+
+# opencv-python ships no type stubs. The import in geometry/__init__.py
+# exists only to detect whether the extra is installed.
+[[tool.mypy.overrides]]
+module = ["cv2.*", "cv2"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
