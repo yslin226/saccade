@@ -126,7 +126,7 @@ class PydanticAIVLM:
 
     def _to_response(self, result: Any, *, structured: bool) -> VLMResponse:
         output = result.output
-        usage = result.usage()
+        usage = _usage_of(result)
 
         return VLMResponse(
             text=output if isinstance(output, str) else _render(output),
@@ -139,6 +139,17 @@ class PydanticAIVLM:
             model_id=self._model_id,
             structured=output if structured else None,
         )
+
+
+def _usage_of(result: Any) -> Any:
+    """Read token usage off a run result.
+
+    ``usage`` is a property in pydantic-ai 2.x but was a method earlier, and
+    both shapes appear in the wild depending on the installed version. Accept
+    either rather than crash on a working reply.
+    """
+    usage = result.usage
+    return usage() if callable(usage) else usage
 
 
 def _render(output: Any) -> str:

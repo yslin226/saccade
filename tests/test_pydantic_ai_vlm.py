@@ -163,6 +163,36 @@ class TestAsk:
         assert (await vlm.ask([], "text only")).text == "ok"
 
 
+class TestUsageShapes:
+    """Regression: usage is a property in pydantic-ai 2.x, not a method.
+
+    The original adapter called result.usage(), which crashed with
+    "'RunUsage' object is not callable" against a live model — a failure the
+    mocks did not catch because they only offered the callable form.
+    """
+
+    async def test_usage_as_a_property(self, vlm: PydanticAIVLM) -> None:
+        class PropertyResult:
+            def __init__(self) -> None:
+                self.output = "two circles"
+                self.usage = FakeUsage(input_tokens=11, output_tokens=7)
+
+        async def fake_run(content: Any, **kwargs: Any) -> PropertyResult:
+            return PropertyResult()
+
+        with_agent(vlm, fake_run)
+        response = await vlm.ask([an_image()], "q")
+        assert response.tokens_used == 18
+
+    async def test_usage_as_a_method(self, vlm: PydanticAIVLM) -> None:
+        async def fake_run(content: Any, **kwargs: Any) -> FakeResult:
+            return FakeResult("x", FakeUsage(input_tokens=4, output_tokens=6))
+
+        with_agent(vlm, fake_run)
+        response = await vlm.ask([an_image()], "q")
+        assert response.tokens_used == 10
+
+
 class TestErrorWrapping:
     @pytest.mark.parametrize(
         "error",

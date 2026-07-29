@@ -11,6 +11,8 @@ build/
 *.egg-info/
 cache/
 data/videos/
+# Downloaded BlindTest items — re-fetchable, and too large for git.
+benchmarks/blindtest/data/
 *.mp4
 *.mov
 models/*.pt

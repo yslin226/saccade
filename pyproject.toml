@@ -39,6 +39,9 @@ dev = [
     "ruff",
     "mypy",
     "pre-commit",
+    # Benchmarks read GOOGLE_API_KEY from .env. Declared explicitly rather
+    # than relied on as a transitive dependency of pydantic-ai.
+    "python-dotenv>=1",
 ]
 
 [build-system]
@@ -72,3 +75,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# benchmarks/ is not installed as a package — it ships with the repo, not
+# with saccade-vision — so the project root has to be importable for tests
+# that exercise the benchmark pipeline.
+pythonpath = ["."]
