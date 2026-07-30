@@ -11,6 +11,7 @@ somebody else's job (rule 3).
 
 from __future__ import annotations
 
+from saccade._observer import NON_ANSWERS
 from saccade.models import EvidenceStep, Observation, Verification, Viewport
 
 __all__ = ["EvidenceChain"]
@@ -103,19 +104,7 @@ class EvidenceChain:
         return bool(self._steps)
 
 
-# What a model says when the view does not settle the question. The observer
-# prompt asks for the first form; the others are what models produce anyway.
-_NON_ANSWERS = (
-    "cannot tell",
-    "can't tell",
-    "cannot determine",
-    "unable to determine",
-    "not possible to tell",
-    "insufficient",
-)
-
-
 def _is_answer(step: EvidenceStep) -> bool:
     """Whether a step actually answered, rather than declining to."""
     lowered = step.observation.statement.lower()
-    return not any(phrase in lowered for phrase in _NON_ANSWERS)
+    return not any(phrase in lowered for phrase in NON_ANSWERS)

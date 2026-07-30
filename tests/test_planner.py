@@ -18,9 +18,15 @@ def step(
     bbox: BBox,
     *,
     conflict: str | None = None,
-    verified: bool = True,
+    verified: bool = False,
     source_size: tuple[int, int] = SIZE,
 ) -> EvidenceStep:
+    """Build one evidence step.
+
+    ``verified`` defaults to False because that is the ordinary case: most
+    steps have no measurement to check against, and a confirmed one is a
+    stopping signal rather than a neutral fixture.
+    """
     verification = None
     if conflict is not None:
         verification = Verification(
@@ -166,6 +172,45 @@ class TestExploration:
         planner.record(Viewport.full(SIZE))
         planner.explored.clear()
         assert len(planner.explored) == 1
+
+
+class TestMeasurementSettlesIt:
+    """A confirmed measurement is the strongest stopping signal there is.
+
+    Without this, a run that had already been verified kept magnifying until
+    the subject left the view, then decayed its own confidence answering
+    "cannot tell" about a corner.
+    """
+
+    def test_a_verified_step_stops_the_loop(self) -> None:
+        planner = Planner(SIZE)
+        evidence = [step(0, BBox(x=0, y=0, w=200, h=200), verified=True)]
+        planned = planner.plan_next(evidence, confidence=0.85)
+
+        assert planned.action is Action.STOP
+        assert "confirmed" in planned.reason
+
+    def test_stopping_names_the_step_that_settled_it(self) -> None:
+        planner = Planner(SIZE)
+        evidence = [
+            step(0, BBox(x=0, y=0, w=200, h=200)),
+            step(1, BBox(x=0, y=0, w=100, h=100), verified=True),
+        ]
+        assert "step 1" in planner.plan_next(evidence, confidence=0.85).reason
+
+    def test_an_unverified_step_does_not_stop_the_loop(self) -> None:
+        planner = Planner(SIZE)
+        evidence = [step(0, BBox(x=0, y=0, w=200, h=200))]
+        assert planner.plan_next(evidence, confidence=0.2).action is not Action.STOP
+
+    def test_a_conflict_still_outranks_a_settled_step(self) -> None:
+        """A later disagreement means the question is open again."""
+        planner = Planner(SIZE)
+        evidence = [
+            step(0, BBox(x=0, y=0, w=200, h=200), verified=True),
+            step(1, BBox(x=0, y=0, w=100, h=100), conflict="measured otherwise"),
+        ]
+        assert planner.plan_next(evidence, confidence=0.5).action is Action.ZOOM
 
 
 class TestStopping:

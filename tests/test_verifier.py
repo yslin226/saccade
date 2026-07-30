@@ -182,6 +182,46 @@ class TestNoFalseConflicts:
         assert verification.passed is True
 
 
+class TestDecliningToAnswerIsNotAgreement:
+    """A measurement cannot confirm a claim nobody made.
+
+    Found by tracing a real run: once the agent magnified a corner, the model
+    answered "CANNOT TELL" while the tool measured fragments of shapes. No
+    verdict meant no contradiction, so the nonsense measurement was counted
+    as confirmation and pushed confidence up.
+    """
+
+    @pytest.mark.parametrize(
+        "refusal",
+        [
+            "CANNOT TELL",
+            "I cannot tell from this view.",
+            "Unable to determine.",
+            "It is not possible to tell.",
+        ],
+    )
+    def test_a_refusal_is_never_verified(self, refusal: str) -> None:
+        verification = verify(said(refusal), [measured({"overlap": True})])
+        assert verification.passed is False
+        assert verification.method == "none"
+
+    def test_a_refusal_cannot_raise_confidence_past_the_ceiling(self) -> None:
+        verification = verify(said("CANNOT TELL"), [measured({"overlap": True})])
+        confidence = 0.0
+        for _ in range(10):
+            confidence = adjust_confidence(confidence, verification)
+        assert confidence <= UNVERIFIED_CEILING
+
+    def test_the_measurement_is_still_recorded(self) -> None:
+        """Unusable as proof, but it belongs in the evidence chain."""
+        verification = verify(said("CANNOT TELL"), [measured({"overlap": True})])
+        assert verification.computed == {"overlap": True}
+
+    def test_a_refusal_is_not_treated_as_a_conflict_either(self) -> None:
+        """Nothing was claimed, so nothing was contradicted."""
+        assert verify(said("CANNOT TELL"), [measured({"overlap": True})]).conflict is None
+
+
 class TestConfidenceAdjustment:
     def test_agreement_raises_confidence(self) -> None:
         verification = verify(said("the circles overlap"), [measured({"overlap": True})])

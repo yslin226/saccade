@@ -18,11 +18,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from saccade._observer import NON_ANSWERS
 from saccade.models import Observation, Verification
 from saccade.tools import ToolResult
 
 __all__ = [
     "UNVERIFIED_CEILING",
+    "VERIFIED_FLOOR",
     "adjust_confidence",
     "verify",
 ]
@@ -32,7 +34,13 @@ __all__ = [
 # the project, so it is a hard ceiling rather than a tunable default.
 UNVERIFIED_CEILING = 0.6
 
-# How far a single verification moves confidence.
+# Where a single confirmed measurement puts confidence. Above the default
+# threshold on purpose: the claim has been checked against a computed
+# result, which is the best evidence this design can produce, and treating
+# it as merely incremental left verified answers unable to converge.
+VERIFIED_FLOOR = 0.85
+
+# How far a verification moves confidence beyond the floor.
 AGREEMENT_STEP = 0.25
 CONFLICT_PENALTY = 0.35
 
@@ -82,6 +90,19 @@ def verify(observation: Observation, results: list[ToolResult]) -> Verification:
             conflict=None,
         )
 
+    if _declined(observation.statement):
+        # The model said it could not tell. There is no claim to confront, so
+        # a measurement cannot confirm anything — agreeing with silence is
+        # not agreement. Counting it as confirmation let a magnified corner,
+        # where the tool measures fragments of shapes, raise confidence in an
+        # answer nobody had given.
+        return Verification(
+            passed=False,
+            method="none",
+            computed=_collect(measurements),
+            conflict=None,
+        )
+
     computed = _collect(measurements)
     conflict = _find_conflict(observation.statement, computed)
 
@@ -108,7 +129,12 @@ def adjust_confidence(current: float, verification: Verification) -> float:
         return min(UNVERIFIED_CEILING, current + 0.1)
 
     if verification.passed:
-        return min(1.0, current + AGREEMENT_STEP)
+        # A measurement agreeing with the claim is the strongest evidence the
+        # system can obtain, so it lands above the unverified ceiling in one
+        # step rather than needing several. Requiring repeat confirmations
+        # meant an answer the tools had already backed could never converge,
+        # and the loop kept magnifying until the subject left the view.
+        return max(min(1.0, current + AGREEMENT_STEP), VERIFIED_FLOOR)
 
     return max(0.0, current - CONFLICT_PENALTY)
 
@@ -216,6 +242,17 @@ def _words(text: str) -> list[str]:
     "No." and "no," must both read as the word "no".
     """
     return _WORD.findall(text)
+
+
+def _declined(statement: str) -> bool:
+    """Whether the observation declined to answer.
+
+    Kept in step with the same phrases the evidence chain skips over: a
+    statement that is not an answer cannot be verified, and must not be
+    treated as one.
+    """
+    lowered = statement.lower()
+    return any(phrase in lowered for phrase in NON_ANSWERS)
 
 
 def _count_conflict(lowered: str, key: str, measured: float) -> str | None:

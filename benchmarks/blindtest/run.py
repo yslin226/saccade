@@ -37,7 +37,8 @@ from benchmarks.blindtest.dataset import (
 )
 from benchmarks.blindtest.models import build_vlm, default_rpm
 from benchmarks.blindtest.scoring import score
-from saccade import ActiveVisionAgent, VLMError
+from benchmarks.blindtest.tools import circle_tool
+from saccade import ActiveVisionAgent, Tool, VLMError
 from saccade.ports import VLMPort
 from saccade.vlm import FileCache
 
@@ -56,6 +57,12 @@ DEFAULT_RPM = 5
 
 _RETRY_AFTER = re.compile(r"retry in ([\d.]+)s", re.IGNORECASE)
 _MAX_RETRIES = 4
+
+# The three-way comparison M2 exists to make. "saccade" without tools is the
+# control: it isolates what extra looks are worth on their own, so any gain
+# from "saccade-tools" can be attributed to verification rather than to
+# simply asking the model more times.
+MODES = ("baseline", "saccade", "saccade-tools")
 
 
 class RateLimiter:
@@ -97,7 +104,12 @@ async def with_retry(call: Callable[[], Awaitable[T]], limiter: RateLimiter) -> 
 
 @dataclass
 class ItemOutcome:
-    """What happened on one question."""
+    """What happened on one question.
+
+    The verification counts are what distinguish a loop that checked itself
+    from one that merely looked several times. M1 reported a respectable
+    accuracy while ``verified`` would have been 0 on every item.
+    """
 
     image_id: str
     prompt: str
@@ -108,6 +120,8 @@ class ItemOutcome:
     confidence: float
     converged: bool
     tokens: int
+    verified: int = 0
+    conflicts: int = 0
     error: str | None = None
 
 
@@ -126,16 +140,22 @@ class RunReport:
     mean_steps: float
     seconds: float
     timestamp: str
+    n_converged: int = 0
+    n_verified_steps: int = 0
+    n_conflicts: int = 0
     outcomes: list[ItemOutcome] = field(default_factory=list)
 
     def summary(self) -> str:
         return (
             f"{self.task} / {self.mode} / {self.model}\n"
-            f"  accuracy : {self.accuracy:.1%}  ({self.n_correct}/{self.n_items})\n"
-            f"  errors   : {self.n_errors}\n"
-            f"  tokens   : {self.total_tokens}\n"
-            f"  steps    : {self.mean_steps:.2f} mean\n"
-            f"  elapsed  : {self.seconds:.1f}s"
+            f"  accuracy  : {self.accuracy:.1%}  ({self.n_correct}/{self.n_items})\n"
+            f"  errors    : {self.n_errors}\n"
+            f"  converged : {self.n_converged}/{self.n_items}\n"
+            f"  verified  : {self.n_verified_steps} step(s) confirmed by measurement\n"
+            f"  conflicts : {self.n_conflicts} time(s) the tool overruled the model\n"
+            f"  tokens    : {self.total_tokens}\n"
+            f"  steps     : {self.mean_steps:.2f} mean\n"
+            f"  elapsed   : {self.seconds:.1f}s"
         )
 
 
@@ -182,7 +202,33 @@ async def run_saccade(
         confidence=result.confidence,
         converged=result.converged,
         tokens=result.total_tokens,
+        verified=sum(1 for s in result.evidence_chain if s.verification and s.verification.passed),
+        conflicts=sum(
+            1 for s in result.evidence_chain if s.verification and s.verification.conflict
+        ),
     )
+
+
+def _referee_for(item: BlindTestItem) -> Tool:
+    """Build the measurement tool for one item's question.
+
+    The dataset answers Yes to "are they touching" and No to "are they
+    overlapping" for the same tangent image, so the referee cannot be
+    configured once for a run — a stratified sample mixes both phrasings.
+    """
+    return circle_tool(tangent_counts="touching" in item.prompt)
+
+
+def _report(progress: bool, index: int, total: int, outcome: ItemOutcome) -> None:
+    if not progress:
+        return
+    mark = "OK " if outcome.correct else "XX "
+    detail = repr(outcome.answer[:60])
+    if outcome.error:
+        # Show the error itself: a run of silent failures otherwise looks
+        # identical to a run of wrong answers.
+        mark, detail = "ERR", outcome.error[:100]
+    print(f"  [{index}/{total}] {mark} {detail}", flush=True)
 
 
 def _failed(item: BlindTestItem, error: str) -> ItemOutcome:
@@ -237,8 +283,8 @@ async def run(
         stratify: Spread the sample across the dataset instead of taking the
             first ``limit`` items, which would all be the same difficulty.
     """
-    if mode not in ("baseline", "saccade"):
-        raise ValueError(f"mode must be 'baseline' or 'saccade', got {mode!r}")
+    if mode not in MODES:
+        raise ValueError(f"mode must be one of {sorted(MODES)}, got {mode!r}")
 
     if vlm is None:
         vlm = build_vlm(model)
@@ -257,26 +303,25 @@ async def run(
     if not items:
         raise RuntimeError(f"no items loaded for task {task!r}")
 
-    agent = ActiveVisionAgent(vlm, cache=cache, max_steps=max_steps)
-
     limiter = RateLimiter(rpm)
     started = time.monotonic()
     outcomes: list[ItemOutcome] = []
     for index, item in enumerate(items, start=1):
         if mode == "baseline":
             outcome = await _cached_baseline(vlm, cache, item, limiter)
-        else:
-            outcome = await run_saccade(agent, item, limiter)
-        outcomes.append(outcome)
+            outcomes.append(outcome)
+            _report(progress, index, len(items), outcome)
+            continue
 
-        if progress:
-            mark = "OK " if outcome.correct else "XX "
-            detail = repr(outcome.answer[:60])
-            if outcome.error:
-                # Show the error itself: a run of silent failures otherwise
-                # looks identical to a run of wrong answers.
-                mark, detail = "ERR", outcome.error[:100]
-            print(f"  [{index}/{len(items)}] {mark} {detail}", flush=True)
+        # A fresh agent per item: in tools mode the referee is configured
+        # from the question, and the sample mixes both phrasings.
+        agent = ActiveVisionAgent(vlm, cache=cache, max_steps=max_steps)
+        if mode == "saccade-tools":
+            agent.register_tool(_referee_for(item))
+
+        outcome = await run_saccade(agent, item, limiter)
+        outcomes.append(outcome)
+        _report(progress, index, len(items), outcome)
 
     elapsed = time.monotonic() - started
     correct = sum(1 for o in outcomes if o.correct)
@@ -294,6 +339,9 @@ async def run(
         mean_steps=sum(o.steps for o in outcomes) / len(outcomes),
         seconds=elapsed,
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%S"),
+        n_converged=sum(1 for o in outcomes if o.converged),
+        n_verified_steps=sum(o.verified for o in outcomes),
+        n_conflicts=sum(o.conflicts for o in outcomes),
         outcomes=outcomes,
     )
 
@@ -344,7 +392,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--task", default="touching_circles", choices=sorted(TASKS))
-    parser.add_argument("--mode", default="baseline", choices=["baseline", "saccade"])
+    parser.add_argument("--mode", default="baseline", choices=list(MODES))
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument("--offset", type=int, default=0)

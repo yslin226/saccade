@@ -15,9 +15,24 @@ from saccade.models import Observation, VLMResponse
 from saccade.ports import CachePort, VLMPort
 from saccade.vlm._cache import make_cache_key
 
-__all__ = ["Observer"]
+__all__ = ["NON_ANSWERS", "Observer"]
 
 logger = logging.getLogger("saccade")
+
+# What a model says when the view does not settle the question. The prompt
+# below asks for the first form; the rest are what models produce anyway.
+#
+# Shared with the verifier and the evidence chain, which must agree on what
+# counts as an answer: a statement nobody made cannot be confirmed by a
+# measurement, and must not be chosen as the final answer either.
+NON_ANSWERS = (
+    "cannot tell",
+    "can't tell",
+    "cannot determine",
+    "unable to determine",
+    "not possible to tell",
+    "insufficient",
+)
 
 OBSERVE_PROMPT = """You are looking at a region of a larger image, which may
 be the whole image or a magnified part of it.

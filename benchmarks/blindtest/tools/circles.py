@@ -60,6 +60,10 @@ _SHADE_DISTANCE = 60
 # Below this, a mask is anti-aliasing fringe rather than a drawn shape.
 _MIN_DIAMETER = 8
 
+# How close to the view boundary a circle may come before it is assumed cut
+# off. One pixel of slack for rasterisation.
+_EDGE_MARGIN = 1
+
 
 @dataclass(frozen=True)
 class Circle:
@@ -172,6 +176,26 @@ def _circle_from_mask(mask: np.ndarray) -> Circle | None:
     )
 
 
+def _touches_edge(circles: list[Circle], size: tuple[int, int]) -> bool:
+    """Whether any circle reaches the boundary of the view.
+
+    A circle that does is probably cut off, and what was measured is a
+    fragment rather than the shape.
+    """
+    width, height = size
+    for circle in circles:
+        cx, cy = circle.centre
+        r = circle.radius
+        if (
+            cx - r <= _EDGE_MARGIN
+            or cy - r <= _EDGE_MARGIN
+            or cx + r >= width - 1 - _EDGE_MARGIN
+            or cy + r >= height - 1 - _EDGE_MARGIN
+        ):
+            return True
+    return False
+
+
 def measure_circles(image: Image, *, tangent_counts: bool) -> dict[str, object]:
     """Measure whether the two circles in a view overlap.
 
@@ -189,6 +213,17 @@ def measure_circles(image: Image, *, tangent_counts: bool) -> dict[str, object]:
             "method": "circles_overlap",
             "detected": len(circles),
             "note": "fewer than two circles in this view",
+        }
+
+    if _touches_edge(circles, image.size):
+        # A magnified crop cuts the circles, and a fragment measures as a
+        # smaller circle in the wrong place. Reporting a verdict from that
+        # would put a confident wrong number into evidence — which is worse
+        # than no measurement, because the verifier believes it.
+        return {
+            "method": "circles_overlap",
+            "detected": len(circles),
+            "note": "a circle runs past the edge of this view",
         }
 
     first, second = circles[0], circles[1]

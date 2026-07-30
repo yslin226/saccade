@@ -121,6 +121,17 @@ class Planner:
                     zoom_factor=CONFLICT_ZOOM,
                 )
 
+        settled = _settled_by_measurement(evidence)
+        if settled is not None:
+            return PlannedAction(
+                action=Action.STOP,
+                viewport=settled.viewport,
+                reason=(
+                    f"a measurement confirmed the observation at step "
+                    f"{settled.index}; looking again cannot improve on that"
+                ),
+            )
+
         if len(evidence) >= self.max_steps:
             return PlannedAction(
                 action=Action.STOP,
@@ -201,6 +212,20 @@ class Planner:
         wider view is the entire point of a saccade.
         """
         return any(seen == candidate for seen in self._explored)
+
+
+def _settled_by_measurement(evidence: list[EvidenceStep]) -> EvidenceStep | None:
+    """The step where a measurement confirmed what the model said, if any.
+
+    Once a computed result has backed an answer, further looks cannot make
+    it more true — and in practice they make things worse, since later steps
+    are magnified crops where the subject is partly outside the view. The
+    referee agreeing is the strongest stopping signal the loop has.
+    """
+    for step in evidence:
+        if step.verification is not None and step.verification.passed:
+            return step
+    return None
 
 
 def _latest_conflict(evidence: list[EvidenceStep]) -> EvidenceStep | None:
