@@ -357,6 +357,7 @@ async def run(
         # Fetch a wide slice, then spread the sample across it. Taking the
         # first N items gets N nearly identical questions — see
         # stratified_sample for why that produces a meaningless number.
+        #
         pool = load_task(task, limit=max(limit * 8, 100), offset=offset)
         items = stratified_sample(pool, limit)
     else:

@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import Any
 
 import httpx
 from PIL import Image
+
+logger = logging.getLogger("benchmarks.blindtest")
 
 __all__ = [
     "DEFAULT_CACHE_DIR",
@@ -131,6 +134,29 @@ def load_task(
         return cached
 
     items: list[BlindTestItem] = []
+    try:
+        items = _download(task_name, limit, offset, timeout)
+    except httpx.HTTPStatusError:
+        # The dataset server refused. If anything is cached, run on that
+        # rather than not running: a smaller sample is a stated limitation,
+        # while no run at all answers nothing.
+        partial = store.load(None, offset)
+        if not partial:
+            raise
+        logger.warning(
+            "dataset server refused; using %d cached item(s) for %s", len(partial), task_name
+        )
+        return partial
+
+    store.save(items, offset)
+    return items
+
+
+def _download(
+    task_name: str, limit: int | None, offset: int, timeout: float
+) -> list[BlindTestItem]:
+    """Fetch items from the dataset server."""
+    items: list[BlindTestItem] = []
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         cursor = 0
         total = _total(client)
@@ -158,7 +184,6 @@ def load_task(
             if cursor >= total:
                 break
 
-    store.save(items, offset)
     return items
 
 

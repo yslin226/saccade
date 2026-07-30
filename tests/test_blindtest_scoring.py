@@ -10,7 +10,12 @@ from __future__ import annotations
 
 import pytest
 
-from benchmarks.blindtest.scoring import extract_count, extract_yes_no, score
+from benchmarks.blindtest.scoring import (
+    extract_count,
+    extract_pair,
+    extract_yes_no,
+    score,
+)
 
 
 class TestExtractYesNo:
@@ -118,6 +123,64 @@ class TestScoreCounting:
 
     def test_unreadable_answer_scores_wrong(self) -> None:
         assert score(self.TASK, "It is hard to say.", "2") is False
+
+
+class TestScoreCountingGrid:
+    """Rows and columns: both numbers matter.
+
+    extract_count returns the last integer, so scoring these through it
+    compared columns against the row count — marking correct answers wrong
+    and some wrong ones right.
+    """
+
+    TASK = "Counting Grid - Blank Grids"
+
+    def test_correct_braced_pair(self) -> None:
+        assert score(self.TASK, "rows={5} columns={6}", "5,6") is True
+
+    def test_correct_parenthesised_pair(self) -> None:
+        assert score(self.TASK, "(5,6)", "5,6") is True
+
+    def test_transposed_is_wrong(self) -> None:
+        """5 rows by 6 columns is not 6 by 5."""
+        assert score(self.TASK, "rows={6} columns={5}", "5,6") is False
+
+    def test_one_number_wrong_is_wrong(self) -> None:
+        assert score(self.TASK, "rows={5} columns={7}", "5,6") is False
+
+    def test_a_square_grid_is_not_scored_by_luck(self) -> None:
+        """Reading only the last number made this pass for the wrong reason."""
+        assert score(self.TASK, "rows={3} columns={3}", "3,3") is True
+        assert score(self.TASK, "rows={3} columns={4}", "3,3") is False
+
+    def test_a_single_number_cannot_answer(self) -> None:
+        assert score(self.TASK, "{5}", "5,6") is False
+
+    def test_unreadable_answer_scores_wrong(self) -> None:
+        assert score(self.TASK, "I cannot count them.", "5,6") is False
+
+    def test_prose_around_the_numbers_is_tolerated(self) -> None:
+        assert score(self.TASK, "The table has 5 rows and 6 columns.", "5,6") is True
+
+
+class TestExtractPair:
+    def test_braced_pair(self) -> None:
+        assert extract_pair("rows={5} columns={6}") == (5, 6)
+
+    def test_bare_pair(self) -> None:
+        assert extract_pair("5,6") == (5, 6)
+
+    def test_order_is_preserved(self) -> None:
+        assert extract_pair("(6,5)") == (6, 5)
+
+    def test_one_number_is_not_a_pair(self) -> None:
+        assert extract_pair("{5}") is None
+
+    def test_no_numbers(self) -> None:
+        assert extract_pair("cannot tell") is None
+
+    def test_braced_values_win_over_incidental_numbers(self) -> None:
+        assert extract_pair("of the 12 cells, rows={3} columns={4}") == (3, 4)
 
 
 class TestScorerCannotInflateAccuracy:

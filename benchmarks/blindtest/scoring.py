@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-__all__ = ["extract_count", "extract_yes_no", "score"]
+__all__ = ["extract_count", "extract_pair", "extract_yes_no", "score"]
 
 _BRACED = re.compile(r"\{\s*(-?\d+)\s*\}")
 _BARE_INT = re.compile(r"-?\d+")
@@ -60,6 +60,22 @@ def extract_count(text: str) -> int | None:
     return None
 
 
+def extract_pair(text: str) -> tuple[int, int] | None:
+    """Pull two integers out of a reply, in the order they appear.
+
+    The grid tasks ask for rows and columns — "rows={5} columns={6}", or
+    "(5,6)", or a bare "5,6" from the ground truth. Both numbers matter, so
+    reading only the last one would score "rows=3 columns=4" against a truth
+    of 3,3 by comparing 4 with 3: wrong for the right answer and right for
+    some wrong ones.
+    """
+    braced = _BRACED.findall(text)
+    numbers = braced if len(braced) >= 2 else _BARE_INT.findall(text)
+    if len(numbers) < 2:
+        return None
+    return int(numbers[0]), int(numbers[1])
+
+
 def score(task: str, answer: str, groundtruth: str) -> bool:
     """Whether ``answer`` matches ``groundtruth`` for ``task``.
 
@@ -77,6 +93,11 @@ def score(task: str, answer: str, groundtruth: str) -> bool:
         expected = extract_yes_no(groundtruth)
         given = extract_yes_no(answer)
         return expected is not None and given == expected
+
+    if task.startswith("Counting Grid"):
+        expected_pair = extract_pair(groundtruth)
+        given_pair = extract_pair(answer)
+        return expected_pair is not None and given_pair == expected_pair
 
     expected_count = extract_count(groundtruth)
     given_count = extract_count(answer)
