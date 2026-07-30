@@ -115,6 +115,57 @@ class TestConflict:
         assert verification.passed is True
 
 
+class TestBareVerdicts:
+    """Regression: bare "Yes"/"No" answers never reached the verifier.
+
+    _boolean_conflict required the measurement's own key word to appear in
+    the statement, but benchmarks ask for exactly "Yes" or "No" and that is
+    what models return. Every such answer silently passed verification, so
+    the referee never once overruled the model — the defect that would have
+    made M2's tool work pointless.
+
+    Found by review, not by the tests: every existing case used prose like
+    "the circles overlap", which is the shape I imagined rather than the
+    shape models produce.
+    """
+
+    @pytest.mark.parametrize("answer", ["Yes", "yes", "Yes.", "YES"])
+    def test_bare_yes_conflicts_with_a_false_measurement(self, answer: str) -> None:
+        verification = verify(said(answer), [measured({"overlap": False})])
+        assert verification.passed is False
+        assert verification.conflict is not None
+
+    @pytest.mark.parametrize("answer", ["No", "no", "No.", "NO"])
+    def test_bare_no_conflicts_with_a_true_measurement(self, answer: str) -> None:
+        verification = verify(said(answer), [measured({"overlap": True})])
+        assert verification.passed is False
+
+    def test_bare_yes_agrees_with_a_true_measurement(self) -> None:
+        assert verify(said("Yes"), [measured({"overlap": True})]).passed is True
+
+    def test_bare_no_agrees_with_a_false_measurement(self) -> None:
+        assert verify(said("No."), [measured({"overlap": False})]).passed is True
+
+    def test_a_verdict_then_justification_reads_as_the_verdict(self) -> None:
+        statement = "No, the two circles are not touching each other."
+        assert verify(said(statement), [measured({"overlap": False})]).passed is True
+        assert verify(said(statement), [measured({"overlap": True})]).passed is False
+
+    def test_the_leading_verdict_wins_over_a_later_one(self) -> None:
+        """ "Yes, though no gap is visible" is a Yes."""
+        statement = "Yes, though no gap is visible."
+        assert verify(said(statement), [measured({"overlap": True})]).passed is True
+
+    def test_punctuation_cannot_hide_the_verdict(self) -> None:
+        assert verify(said("No,"), [measured({"overlap": True})]).passed is False
+
+    def test_bare_verdicts_move_confidence_in_both_directions(self) -> None:
+        agreed = verify(said("Yes"), [measured({"overlap": True})])
+        clashed = verify(said("Yes"), [measured({"overlap": False})])
+        assert adjust_confidence(0.5, agreed) > 0.5
+        assert adjust_confidence(0.5, clashed) < 0.5
+
+
 class TestNoFalseConflicts:
     """A conflict that is not real costs more than a missed one."""
 

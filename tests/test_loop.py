@@ -260,6 +260,53 @@ class TestStructuredOutput:
         result = await agent.investigate_async(an_image(), "q", expect=Answer)
         assert result.structured == Answer(overlapping=True)
 
+    async def test_a_verified_structured_answer_survives_later_steps(self) -> None:
+        """An unverified later look must not overwrite a confirmed answer.
+
+        Later steps are magnified corners; taking the most recent structured
+        value regardless would discard the one the tools actually backed.
+        """
+        agent = ActiveVisionAgent(
+            FakeVLM(
+                [Answer(overlapping=True), Answer(overlapping=False)],
+                exhausted="repeat_last",
+            ),
+            tools=[measuring_tool({"overlap": True})],
+            max_steps=2,
+            confidence_threshold=0.99,
+        )
+        result = await agent.investigate_async(an_image(), "q", expect=Answer)
+        assert result.structured == Answer(overlapping=True)
+
+
+class TestEvidenceRecordsWhy:
+    """Rule 8: a chain showing only coordinates cannot be argued with."""
+
+    async def test_every_step_records_why_it_looked_there(self) -> None:
+        agent = ActiveVisionAgent(
+            FakeVLM(["x"], exhausted="repeat_last"), max_steps=3, confidence_threshold=0.99
+        )
+        result = await agent.investigate_async(an_image(), "q")
+
+        assert all(step.reason for step in result.evidence_chain)
+        assert "whole image" in result.evidence_chain[0].reason
+
+    async def test_the_reason_is_not_stuffed_into_image_ref(self) -> None:
+        """image_ref means a path or cache key, not prose."""
+        agent = ActiveVisionAgent(FakeVLM(["x"], exhausted="repeat_last"), max_steps=1)
+        result = await agent.investigate_async(an_image(), "q")
+        assert result.evidence_chain[0].image_ref is None
+
+    async def test_a_conflict_is_explained_in_the_next_step(self) -> None:
+        agent = ActiveVisionAgent(
+            FakeVLM(["there are 3 people"], exhausted="repeat_last"),
+            tools=[measuring_tool({"people": 2})],
+            max_steps=2,
+            confidence_threshold=0.99,
+        )
+        result = await agent.investigate_async(an_image(), "q")
+        assert "conflict" in result.evidence_chain[1].reason.lower()
+
 
 class TestSyncWrapper:
     def test_investigate_runs_the_loop(self) -> None:

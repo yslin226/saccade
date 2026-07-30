@@ -136,6 +136,10 @@ class EvidenceStep(BaseModel):
     ``image_ref`` is a reference (path, cache key, URL) rather than image
     bytes: the models stay serialisable and the library stays out of the
     business of deciding where images live.
+
+    ``reason`` records why this region was chosen. An auditor needs to see
+    not just where the agent looked but what sent it there — a chain showing
+    only coordinates cannot be argued with.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -145,6 +149,7 @@ class EvidenceStep(BaseModel):
     viewport: Viewport
     observation: Observation
     verification: Verification | None = None
+    reason: str | None = None
     image_ref: str | None = None
 
 

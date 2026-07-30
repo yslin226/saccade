@@ -102,6 +102,7 @@ class ActiveVisionAgent:
         chain = EvidenceChain()
         confidence = 0.0
         structured: Any | None = None
+        structured_verified = False
 
         for _ in range(self.max_steps):
             planned = planner.plan_next(chain.steps, confidence)
@@ -113,18 +114,25 @@ class ActiveVisionAgent:
             planner.record(planned.viewport)
 
             observation, response = await observer.observe([view], question, output_type=expect)
-            structured = response.structured
 
             results = self._run_tools(view, planned.viewport)
             verification = verify(observation, results)
             confidence = adjust_confidence(confidence, verification)
+
+            # Keep the first verified structured answer. Once a measurement
+            # has backed a value, later steps are narrower crops rather than
+            # better views, and letting them overwrite it discards the one
+            # piece of output the tools actually stood behind.
+            if response.structured is not None and (structured is None or not structured_verified):
+                structured = response.structured
+                structured_verified = verification.passed
 
             step = chain.add(
                 action_name=planned.action.value,
                 viewport=planned.viewport,
                 observation=observation,
                 verification=verification,
-                image_ref=planned.reason,
+                reason=planned.reason,
             )
             if self._on_step is not None:
                 self._on_step(step)

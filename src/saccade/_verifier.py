@@ -37,6 +37,7 @@ AGREEMENT_STEP = 0.25
 CONFLICT_PENALTY = 0.35
 
 _NUMBER = re.compile(r"-?\d+(?:\.\d+)?")
+_WORD = re.compile(r"[a-z']+")
 
 # Words that assert something is or is not the case. A statement carrying
 # none of these is descriptive, and there is nothing to contradict.
@@ -161,21 +162,60 @@ def _find_conflict(statement: str, computed: dict[str, Any]) -> str | None:
 
 
 def _boolean_conflict(lowered: str, key: str, measured: bool) -> str | None:
-    """Detect a claim that contradicts a measured true/false fact."""
-    subject = key.replace("_", " ")
-    head = subject.split()[0] if subject.split() else subject
-    if head not in lowered and subject not in lowered:
-        return None
+    """Detect a claim that contradicts a measured true/false fact.
 
-    negated = any(word in _NEGATIONS for word in lowered.split())
-    claimed = not negated
+    Two shapes of claim, because models produce both:
+
+    - A bare verdict — "Yes", "No.", "No, they are apart." Benchmarks ask
+      for exactly this, so it is the common case. Requiring the measurement's
+      own key word to appear in the statement missed all of them, and every
+      answer silently passed verification.
+    - A sentence naming the measured property — "the circles overlap".
+    """
+    claimed = _verdict(lowered)
+
+    if claimed is None:
+        subject_words = key.replace("_", " ").split()
+        head = subject_words[0] if subject_words else key
+        if head not in lowered:
+            return None
+        claimed = not any(word in _NEGATIONS for word in _words(lowered))
 
     if claimed == measured:
         return None
+
+    subject = key.replace("_", " ")
     return (
         f"the observation states {subject} is {str(claimed).lower()}, "
         f"but the measurement found {str(measured).lower()}"
     )
+
+
+def _verdict(lowered: str) -> bool | None:
+    """Read a leading yes/no verdict, if the statement opens with one.
+
+    Position matters: "No, the circles are not touching" is a No, while
+    "Yes, though no gap is visible" is a Yes. Whichever comes first is the
+    answer; the rest is justification.
+    """
+    words = _words(lowered)
+    if not words:
+        return None
+
+    for word in words[:3]:
+        if word == "yes":
+            return True
+        if word == "no":
+            return False
+    return None
+
+
+def _words(text: str) -> list[str]:
+    """Split into bare words, so punctuation cannot hide a keyword.
+
+    "No." and "no," must both read as the word "no".
+    """
+    return _WORD.findall(text)
 
 
 def _count_conflict(lowered: str, key: str, measured: float) -> str | None:

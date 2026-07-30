@@ -29,6 +29,7 @@ class EvidenceChain:
         viewport: Viewport,
         observation: Observation,
         verification: Verification | None = None,
+        reason: str | None = None,
         image_ref: str | None = None,
     ) -> EvidenceStep:
         """Append a step. The index is assigned here so it cannot drift."""
@@ -38,6 +39,7 @@ class EvidenceChain:
             viewport=viewport,
             observation=observation,
             verification=verification,
+            reason=reason,
             image_ref=image_ref,
         )
         self._steps.append(step)
