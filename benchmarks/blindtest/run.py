@@ -30,6 +30,7 @@ from typing import TypeVar
 from dotenv import load_dotenv
 
 from benchmarks.blindtest.dataset import (
+    MEASURABLE,
     TASKS,
     BlindTestItem,
     load_task,
@@ -363,6 +364,15 @@ async def run(
 
     if not items:
         raise RuntimeError(f"no items loaded for task {task!r}")
+
+    if mode in ("saccade-tools", "tools-only") and items[0].task not in MEASURABLE:
+        # Running these without a referee would silently reproduce another
+        # mode and file the result under this one, which is how a comparison
+        # table starts lying.
+        raise RuntimeError(
+            f"{items[0].task!r} has no measurement tool, so {mode!r} would measure "
+            f"nothing. Use 'baseline' or 'saccade'."
+        )
 
     limiter = RateLimiter(rpm)
     started = time.monotonic()

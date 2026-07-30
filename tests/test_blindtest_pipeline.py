@@ -408,10 +408,13 @@ class TestToolsOnlyControl:
         )
         assert report.total_tokens == 0
 
-    async def test_a_task_without_a_referee_errors_rather_than_scoring_zero(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    @pytest.mark.parametrize("mode", ["tools-only", "saccade-tools"])
+    async def test_a_task_without_a_referee_is_refused_not_faked(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, mode: str
     ) -> None:
-        """No tool means no answer, not a wrong answer."""
+        """Running these without a tool would reproduce another mode and file
+        the result under this one — which is how a comparison table starts
+        lying."""
         unmeasurable = BlindTestItem(
             task="Circled Letter",
             image=Image.new("RGB", (64, 64), "white"),
@@ -421,15 +424,15 @@ class TestToolsOnlyControl:
         )
         monkeypatch.setattr(runner, "load_task", lambda task, **kw: [unmeasurable])
 
-        report = await runner.run(
-            "touching_circles",
-            "tools-only",
-            limit=1,
-            cache_dir=str(tmp_path),
-            progress=False,
-        )
-        assert report.n_errors == 1
-        assert report.n_correct == 0
+        with pytest.raises(RuntimeError, match="no measurement tool"):
+            await runner.run(
+                "circled_letter",
+                mode,
+                limit=1,
+                vlm=FakeVLM(["a"], exhausted="repeat_last"),
+                cache_dir=str(tmp_path),
+                progress=False,
+            )
 
 
 class TestStratifiedSampling:

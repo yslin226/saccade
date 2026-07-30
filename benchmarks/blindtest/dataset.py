@@ -22,7 +22,14 @@ from typing import Any
 import httpx
 from PIL import Image
 
-__all__ = ["DEFAULT_CACHE_DIR", "TASKS", "BlindTestItem", "load_task", "stratified_sample"]
+__all__ = [
+    "DEFAULT_CACHE_DIR",
+    "MEASURABLE",
+    "TASKS",
+    "BlindTestItem",
+    "load_task",
+    "stratified_sample",
+]
 
 DEFAULT_CACHE_DIR = Path(__file__).resolve().parent / "data"
 
@@ -36,13 +43,32 @@ _MAX_RETRIES = 6
 _INITIAL_BACKOFF = 2.0
 _MAX_BACKOFF = 30.0
 
-# The two tasks M1 targets. Both have a closed-form referee already
-# implemented in saccade.geometry, which is the whole point: a task Saccade
-# cannot verify would only measure the model, not the loop.
+# The BlindTest tasks, by the short name the runner takes.
+#
+# Two groups, and the distinction turned out to matter more than expected.
+# The first two have a closed-form referee, and on those a tool alone reaches
+# 98-99% — which leaves an agent nothing to add, and on one task actively
+# hurts. The rest cannot be settled by geometry: reading which letter is
+# circled, or following a coloured path, needs recognition. Those are where
+# looking again might earn its keep, so they are the fair test of the idea.
 TASKS = {
+    # Measurable: geometry settles them.
     "touching_circles": "Touching Circles",
     "line_intersections": "Line Plot Intersections",
+    # Not measurable: recognition, not measurement.
+    "circled_letter": "Circled Letter",
+    "olympic_circles": "Olympic Counting - Circles",
+    "olympic_pentagons": "Olympic Counting - Pentagons",
+    "nested_squares": "Nested Squares",
+    "grid_blank": "Counting Grid - Blank Grids",
+    "grid_words": "Counting Grid - Word Grids",
+    "subway": "Subway Connections",
 }
+
+# Tasks with a computable referee. Everything else runs without one, which
+# is stated rather than hidden: "saccade-tools" on an unmeasurable task is
+# the same as "saccade", and the report should not imply otherwise.
+MEASURABLE = frozenset({"Touching Circles", "Line Plot Intersections"})
 
 
 @dataclass(frozen=True)
