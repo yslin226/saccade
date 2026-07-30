@@ -39,24 +39,46 @@ new architectures and RL budgets. This is the cheap path up the same hill:
 find out how far you get by giving an existing model agency over its own
 attention.
 
+## First results
+
+On BlindTest's Touching Circles — 150 items, sampled across the full range
+of difficulty rather than the easy end:
+
+| | GPT-5.4 | GPT-4.1 |
+|---|---|---|
+| One look (what a VLM does today) | 90.7% | 78.0% |
+| Looking several times | 93.3% | 77.3% |
+| Looking several times, checked against geometry | **100.0%** | **89.3%** |
+
+The middle row is the interesting one. Letting the model look again and
+again is not what helps: +2.7% on one model and −0.7% on the other, neither
+distinguishable from noise (McNemar p = 0.39 and p = 1.00). What helps is
+giving it something that can actually measure — +6.7% and +12.0% on top,
+p = 0.002 and p = 0.00001, and across both models that step fixed 28 items
+while breaking none.
+
+That is worth stating plainly, because it is not the obvious result. The
+gain does not come from more attention. It comes from attention plus a
+referee: the tool overruled the model 17 times on GPT-5.4 and 51 times on
+GPT-4.1, and every one of those was the model being talked out of a wrong
+answer by a number.
+
+One task of seven, two models, one sample size. The remaining tasks and a
+wider model sweep are still to come, and the figures above are worth exactly
+as much as that caveat implies. Every run is in
+[`benchmarks/blindtest/results/`](benchmarks/blindtest/results/) with
+per-item answers, so none of this has to be taken on trust.
+
 ## Where this is now
 
-**M1 — the loop runs.** `ActiveVisionAgent` plans where to look, crops and
-magnifies, asks the model, and records an evidence chain. The BlindTest
-runner works end to end against real models, and a rerun reproduces a run
-exactly from cache.
+**M2, partway.** The loop runs, the verifier verifies, and the first
+measurement tool is in. Circle detection is validated against the dataset's
+own geometry rather than by eye — it agrees with the published answer on
+99.2% of 1190 items, which is what makes it fit to referee a model scoring
+90%.
 
-What is not done: the verifier has nothing to verify against yet. Confronting
-a claim with a measurement needs a tool that can measure — for two circles in
-a photograph, that means detecting the circles before the geometry can judge
-them. Until that lands, the loop is looking more than once but not checking
-itself, which is the half of the idea that matters.
-
-No accuracy figures here. Runs exist under `benchmarks/blindtest/results/`
-with per-item detail, but they measure a loop with its verification stage
-inert, so quoting them as the effect of active vision would be wrong. A
-comparison worth publishing arrives in M2, alongside the ablations that say
-which part did the work.
+Still to do: measurement tools for the other tasks, the full seven-task
+sweep, and more models.
 
 ## How it works
 
@@ -110,7 +132,10 @@ build. The reasoning is in [CLAUDE.md](CLAUDE.md).
 
 - [x] **M0** — skeleton, public types, architecture guard
 - [x] **M1** — Perceive-Verify loop, three visual actions, response cache, benchmark runner
-- [ ] **M2** — measurement tools so the verifier can do its job, full BlindTest across models, ablations for which strategies actually help
+- [ ] **M2** — measurement tools, full BlindTest across models, ablations
+  - [x] circle geometry, verified against the dataset at 99.2%
+  - [x] three-way ablation on Touching Circles, two models
+  - [ ] line intersections, then the remaining five tasks
 - [ ] **M3** — Sandlot Baseball: pose estimation, metrics, run-to-run consistency
 - [ ] **M4** — active vision applied to occluded and motion-blurred frames
 - [ ] **M5** — retrieval-backed interpretation
