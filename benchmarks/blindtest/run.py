@@ -37,7 +37,7 @@ from benchmarks.blindtest.dataset import (
 )
 from benchmarks.blindtest.models import build_vlm, default_rpm
 from benchmarks.blindtest.scoring import score
-from benchmarks.blindtest.tools import circle_tool
+from benchmarks.blindtest.tools import circle_tool, line_tool
 from saccade import ActiveVisionAgent, Tool, VLMError
 from saccade.ports import VLMPort
 from saccade.vlm import FileCache
@@ -209,14 +209,23 @@ async def run_saccade(
     )
 
 
-def _referee_for(item: BlindTestItem) -> Tool:
-    """Build the measurement tool for one item's question.
+def _referee_for(item: BlindTestItem) -> Tool | None:
+    """Build the measurement tool for one item, if the task has one.
 
-    The dataset answers Yes to "are they touching" and No to "are they
-    overlapping" for the same tangent image, so the referee cannot be
-    configured once for a run — a stratified sample mixes both phrasings.
+    Returns None for tasks with no computable referee. Those still run — the
+    loop just has nothing to check itself against, which is worth measuring
+    separately rather than pretending the tool exists.
     """
-    return circle_tool(tangent_counts="touching" in item.prompt)
+    if item.task == "Touching Circles":
+        # The dataset answers Yes to "are they touching" and No to "are they
+        # overlapping" for the same tangent image, so the referee cannot be
+        # configured once per run: a sample mixes both phrasings.
+        return circle_tool(tangent_counts="touching" in item.prompt)
+
+    if item.task == "Line Plot Intersections":
+        return line_tool()
+
+    return None
 
 
 def _report(progress: bool, index: int, total: int, outcome: ItemOutcome) -> None:
@@ -317,7 +326,9 @@ async def run(
         # from the question, and the sample mixes both phrasings.
         agent = ActiveVisionAgent(vlm, cache=cache, max_steps=max_steps)
         if mode == "saccade-tools":
-            agent.register_tool(_referee_for(item))
+            referee = _referee_for(item)
+            if referee is not None:
+                agent.register_tool(referee)
 
         outcome = await run_saccade(agent, item, limiter)
         outcomes.append(outcome)
