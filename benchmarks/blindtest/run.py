@@ -58,11 +58,18 @@ DEFAULT_RPM = 5
 _RETRY_AFTER = re.compile(r"retry in ([\d.]+)s", re.IGNORECASE)
 _MAX_RETRIES = 4
 
-# The three-way comparison M2 exists to make. "saccade" without tools is the
-# control: it isolates what extra looks are worth on their own, so any gain
-# from "saccade-tools" can be attributed to verification rather than to
-# simply asking the model more times.
-MODES = ("baseline", "saccade", "saccade-tools")
+# The comparison M2 exists to make.
+#
+# "saccade" without tools isolates what extra looks are worth on their own,
+# so any gain from "saccade-tools" can be attributed to verification rather
+# than to simply asking the model more times.
+#
+# "tools-only" is the strictest control there is: answer from the measurement
+# alone and never consult the model. When a referee is far more accurate than
+# the thing it referees, the honest question is whether the model contributes
+# anything at all — and a benchmark that cannot embarrass its own thesis is
+# not measuring.
+MODES = ("baseline", "saccade", "saccade-tools", "tools-only")
 
 
 class RateLimiter:
@@ -209,6 +216,49 @@ async def run_saccade(
     )
 
 
+def run_tools_only(item: BlindTestItem) -> ItemOutcome:
+    """Answer from the measurement alone, never asking the model.
+
+    The strictest control in the suite. If this matches or beats the full
+    loop, then on this task the model is not contributing and the honest
+    conclusion is that a detector would do — worth knowing, and worth
+    publishing, whichever way it falls.
+    """
+    referee = _referee_for(item)
+    if referee is None:
+        return _failed(item, "no measurement tool for this task")
+
+    result = referee.fn(image=item.image, viewport=None)
+    answer = _answer_from(item, result.value)
+    if answer is None:
+        return _failed(item, "the tool produced no verdict")
+
+    return ItemOutcome(
+        image_id=item.image_id,
+        prompt=item.prompt,
+        groundtruth=item.groundtruth,
+        answer=answer,
+        correct=score(item.task, answer, item.groundtruth),
+        steps=0,
+        confidence=1.0,
+        converged=True,
+        tokens=0,
+        verified=1,
+    )
+
+
+def _answer_from(item: BlindTestItem, value: object) -> str | None:
+    """Phrase a measurement as the answer the question asked for."""
+    if not isinstance(value, dict):
+        return None
+
+    if "overlap" in value:
+        return "Yes" if value["overlap"] else "No"
+    if "crossings" in value:
+        return "{" + str(value["crossings"]) + "}"
+    return None
+
+
 def _referee_for(item: BlindTestItem) -> Tool | None:
     """Build the measurement tool for one item, if the task has one.
 
@@ -295,7 +345,9 @@ async def run(
     if mode not in MODES:
         raise ValueError(f"mode must be one of {sorted(MODES)}, got {mode!r}")
 
-    if vlm is None:
+    # tools-only never calls a model, so it must not demand credentials for
+    # one — the point of the control is that it runs on arithmetic alone.
+    if vlm is None and mode != "tools-only":
         vlm = build_vlm(model)
 
     cache = FileCache(cache_dir) if cache_dir else FileCache()
@@ -322,6 +374,13 @@ async def run(
             _report(progress, index, len(items), outcome)
             continue
 
+        if mode == "tools-only":
+            # No model call at all, so no rate limit and no cost.
+            outcome = run_tools_only(item)
+            outcomes.append(outcome)
+            _report(progress, index, len(items), outcome)
+            continue
+
         # A fresh agent per item: in tools mode the referee is configured
         # from the question, and the sample mixes both phrasings.
         agent = ActiveVisionAgent(vlm, cache=cache, max_steps=max_steps)
@@ -341,7 +400,9 @@ async def run(
     return RunReport(
         task=items[0].task,
         mode=mode,
-        model=getattr(vlm, "model_id", model),
+        # tools-only consults no model, and labelling it with one would make
+        # the run look like a model's score.
+        model="(none)" if mode == "tools-only" else getattr(vlm, "model_id", model),
         n_items=len(outcomes),
         n_correct=correct,
         n_errors=errors,
