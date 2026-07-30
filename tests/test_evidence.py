@@ -147,6 +147,76 @@ class TestBestStatement:
         assert chain.best_statement() == "b"
 
 
+class TestPartialViewsCannotAnswerWholeImageQuestions:
+    """Regression from a live run on BlindTest's line-crossing task.
+
+    Asked how many times two lines cross, a model looking at one quadrant
+    answers correctly about the quadrant and wrongly about the picture.
+    Taking that as the final answer dropped accuracy from 98.7% to 56.7%:
+    62 items broken, none fixed, every failure an undercount.
+    """
+
+    def test_a_full_view_answer_beats_a_later_crop(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="{2}"),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(x=0, y=0, w=50, h=50),
+            observation=Observation(statement="{1}"),
+        )
+        assert chain.best_statement() == "{2}"
+
+    def test_a_verified_crop_does_not_beat_an_unverified_full_view(self) -> None:
+        """Verification cannot rescue an answer to the wrong question."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="{2}"),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(x=50, y=50, w=50, h=50),
+            observation=Observation(statement="{1}"),
+            verification=passed(),
+        )
+        assert chain.best_statement() == "{2}"
+
+    def test_a_verified_full_view_still_wins(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="{1}"),
+        )
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="{2}"),
+            verification=passed(),
+        )
+        assert chain.best_statement() == "{2}"
+
+    def test_a_crop_is_used_when_nothing_else_answered(self) -> None:
+        """Weak evidence beats none; the chain shows which viewport it came from."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="CANNOT TELL"),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(x=0, y=0, w=50, h=50),
+            observation=Observation(statement="{1}"),
+        )
+        assert chain.best_statement() == "{1}"
+
+
 class TestNonAnswersAreSkipped:
     """Regression from a live BlindTest run.
 

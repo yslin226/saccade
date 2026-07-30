@@ -146,7 +146,14 @@ def line_tool() -> Tool:
         value = measure_lines(image)
         # A view that does not hold both curves yields no count. Reporting
         # zero would let "I could not see them" pass as "they never cross".
-        return ToolResult(value=value, is_measurement="crossings" in value)
+        #
+        # answer_key names the verdict, so columns_with_both is read as
+        # context rather than as a second number to check the answer against.
+        return ToolResult(
+            value=value,
+            is_measurement="crossings" in value,
+            answer_key="crossings",
+        )
 
     return Tool(
         name="line_geometry",

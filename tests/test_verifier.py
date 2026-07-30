@@ -166,6 +166,58 @@ class TestBareVerdicts:
         assert adjust_confidence(0.5, clashed) < 0.5
 
 
+class TestAnswerKeyLimitsWhatIsJudged:
+    """Regression: diagnostics were being checked against the answer.
+
+    A line counter reporting {"crossings": 1, "columns_with_both": 300} had
+    every correct answer rejected, because "1" was compared against 300 too.
+    150 false conflicts in one 150-item run, and no verified steps at all.
+    """
+
+    def test_only_the_named_key_is_judged(self) -> None:
+        result = ToolResult(
+            value={"crossings": 1, "columns_with_both": 300},
+            is_measurement=True,
+            answer_key="crossings",
+        )
+        assert verify(said("{1}"), [result]).passed is True
+
+    def test_a_genuine_disagreement_on_the_named_key_still_conflicts(self) -> None:
+        result = ToolResult(
+            value={"crossings": 1, "columns_with_both": 300},
+            is_measurement=True,
+            answer_key="crossings",
+        )
+        verification = verify(said("{3}"), [result])
+        assert verification.passed is False
+        assert verification.conflict is not None
+        assert "crossings" in verification.conflict
+
+    def test_diagnostics_still_reach_the_evidence_chain(self) -> None:
+        """Not judged, but recorded — the numbers are the point of rule 8."""
+        result = ToolResult(
+            value={"crossings": 1, "columns_with_both": 300},
+            is_measurement=True,
+            answer_key="crossings",
+        )
+        assert verify(said("{1}"), [result]).computed["columns_with_both"] == 300
+
+    def test_without_an_answer_key_every_number_is_judged(self) -> None:
+        """The old behaviour, kept for tools that report a single figure."""
+        result = ToolResult(value={"crossings": 1}, is_measurement=True)
+        assert verify(said("{1}"), [result]).passed is True
+        assert verify(said("{3}"), [result]).passed is False
+
+    def test_a_boolean_answer_key_works_the_same_way(self) -> None:
+        result = ToolResult(
+            value={"overlap": True, "centre_distance": 47.0, "radius_sum": 52.0},
+            is_measurement=True,
+            answer_key="overlap",
+        )
+        assert verify(said("Yes"), [result]).passed is True
+        assert verify(said("No"), [result]).passed is False
+
+
 class TestNoFalseConflicts:
     """A conflict that is not real costs more than a missed one."""
 

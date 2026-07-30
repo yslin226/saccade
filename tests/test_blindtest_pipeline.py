@@ -344,6 +344,94 @@ class TestDistinctItemsDoNotShareAnswers:
         assert key_a != key_b
 
 
+class TestToolsOnlyControl:
+    """The strictest control: answer from the measurement, never ask a model.
+
+    Its job is to be able to embarrass the thesis. On Touching Circles it
+    scores 98.0% against the model's 90.7%, which means most of the gain
+    there is the arithmetic rather than the agency — and the benchmark has to
+    be able to say so.
+    """
+
+    async def test_it_calls_no_model(
+        self, stub_dataset: list[BlindTestItem], tmp_path: Path
+    ) -> None:
+        vlm = FakeVLM(["Yes", "No", "Yes"])
+        await runner.run(
+            "touching_circles",
+            "tools-only",
+            limit=3,
+            vlm=vlm,
+            cache_dir=str(tmp_path),
+            progress=False,
+        )
+        assert vlm.call_count == 0
+
+    async def test_it_needs_no_credentials(
+        self, stub_dataset: list[BlindTestItem], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Running on arithmetic alone must not require an API key."""
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+        monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+
+        report = await runner.run(
+            "touching_circles",
+            "tools-only",
+            limit=3,
+            cache_dir=str(tmp_path),
+            progress=False,
+        )
+        assert report.n_items == 3
+
+    async def test_the_report_names_no_model(
+        self, stub_dataset: list[BlindTestItem], tmp_path: Path
+    ) -> None:
+        """Labelling it with a model would make it look like a model's score."""
+        report = await runner.run(
+            "touching_circles",
+            "tools-only",
+            limit=3,
+            cache_dir=str(tmp_path),
+            progress=False,
+        )
+        assert report.model == "(none)"
+
+    async def test_it_costs_no_tokens(
+        self, stub_dataset: list[BlindTestItem], tmp_path: Path
+    ) -> None:
+        report = await runner.run(
+            "touching_circles",
+            "tools-only",
+            limit=3,
+            cache_dir=str(tmp_path),
+            progress=False,
+        )
+        assert report.total_tokens == 0
+
+    async def test_a_task_without_a_referee_errors_rather_than_scoring_zero(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """No tool means no answer, not a wrong answer."""
+        unmeasurable = BlindTestItem(
+            task="Circled Letter",
+            image=Image.new("RGB", (64, 64), "white"),
+            prompt="Which letter is circled?",
+            groundtruth="a",
+            metadata={"image_id": "x"},
+        )
+        monkeypatch.setattr(runner, "load_task", lambda task, **kw: [unmeasurable])
+
+        report = await runner.run(
+            "touching_circles",
+            "tools-only",
+            limit=1,
+            cache_dir=str(tmp_path),
+            progress=False,
+        )
+        assert report.n_errors == 1
+        assert report.n_correct == 0
+
+
 class TestStratifiedSampling:
     """Taking the first N items measures one difficulty, not the task.
 

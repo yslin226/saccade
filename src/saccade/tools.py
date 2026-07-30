@@ -27,12 +27,22 @@ class ToolResult:
             dicts of numbers so the verifier can compare them.
         is_measurement: True only when ``value`` was computed, not described.
             See :mod:`saccade.tools` module docs.
+        answer_key: When ``value`` is a dict, which key holds the verdict.
+            Everything else is context for the evidence chain and is not
+            compared against the model's statement.
+
+            Worth setting whenever a result carries diagnostics alongside its
+            answer. A line-counting tool reporting
+            ``{"crossings": 1, "columns_with_both": 300}`` had every correct
+            answer rejected, because "1" was checked against 300 as well —
+            150 false conflicts in one run.
         evidence_image: Optional rendering (an annotated crop, say) to attach
             to the evidence chain.
     """
 
     value: Any
     is_measurement: bool
+    answer_key: str | None = None
     evidence_image: Image | None = None
 
 

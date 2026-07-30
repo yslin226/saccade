@@ -193,11 +193,28 @@ class ActiveVisionAgent:
         results: list[ToolResult] = []
         for tool in self._tools.values():
             try:
-                results.append(tool.fn(image=view, viewport=viewport))
+                result = tool.fn(image=view, viewport=viewport)
             except ToolError:
                 logger.warning("tool %s failed", tool.name, exc_info=True)
+                continue
             except Exception:
                 logger.warning("tool %s raised unexpectedly", tool.name, exc_info=True)
+                continue
+
+            if result.is_measurement and not viewport.covers_full_image:
+                # Measured from a crop, so it describes the crop. It cannot
+                # overrule a claim about the whole picture: asked how many
+                # times two lines cross, a quadrant honestly reports fewer.
+                # Left as a measurement, this produced 305 false conflicts in
+                # a single 150-item run. Kept as context, demoted as evidence.
+                result = ToolResult(
+                    value=result.value,
+                    is_measurement=False,
+                    answer_key=result.answer_key,
+                    evidence_image=result.evidence_image,
+                )
+
+            results.append(result)
         return results
 
 

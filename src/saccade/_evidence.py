@@ -71,28 +71,40 @@ class EvidenceChain:
     def best_statement(self) -> str | None:
         """The most defensible statement recorded so far.
 
-        Three rules, in order:
+        The rules, in order:
 
         1. A step that could not answer is skipped. Later looks are often
            magnified corners that no longer contain what the question is
            about, and taking the last statement blindly means answering with
            "I cannot tell from this view" after an earlier step answered it.
-        2. A verified observation beats an unverified one, regardless of how
+        2. A statement made about part of the image is not an answer about
+           the whole image. This matters most for counting: asked how many
+           times two lines cross, a model looking at one quadrant answers
+           correctly about that quadrant and wrongly about the picture. On
+           BlindTest's line task this alone dropped accuracy from 98.7% to
+           56.7% — 62 items broken, none fixed, every one an undercount.
+        3. A verified observation beats an unverified one, regardless of how
            confident the model sounded. That preference is the whole point.
-        3. Among equals the most recent wins, since later looks are better
+        4. Among equals the most recent wins, since later looks are better
            informed.
         """
-        verified = [step for step in self.verified_steps if _is_answer(step)]
+        whole = [step for step in self._steps if _is_answer(step) and _sees_whole_image(step)]
+
+        verified = [s for s in whole if s.verification is not None and s.verification.passed]
         if verified:
             return verified[-1].observation.statement
+        if whole:
+            return whole[-1].observation.statement
 
-        answered = [step for step in self._steps if _is_answer(step)]
-        if answered:
-            return answered[-1].observation.statement
+        # No full-image answer. Fall back to a partial one rather than
+        # nothing — it is weak evidence, but the caller can see from the
+        # chain which viewport produced it.
+        partial = [step for step in self._steps if _is_answer(step)]
+        if partial:
+            return partial[-1].observation.statement
 
-        # Nothing conclusive. Report the last thing seen rather than nothing,
-        # so the caller can tell the difference between "no answer" and
-        # "never looked".
+        # Nothing conclusive at all. Report the last thing seen, so "no
+        # answer" stays distinguishable from "never looked".
         if self._steps:
             return self._steps[-1].observation.statement
         return None
@@ -108,3 +120,12 @@ def _is_answer(step: EvidenceStep) -> bool:
     """Whether a step actually answered, rather than declining to."""
     lowered = step.observation.statement.lower()
     return not any(phrase in lowered for phrase in NON_ANSWERS)
+
+
+def _sees_whole_image(step: EvidenceStep) -> bool:
+    """Whether this step was looking at the entire image.
+
+    A magnified crop can answer a question about itself, but the question
+    was about the picture. Only a full view can settle that.
+    """
+    return step.viewport.covers_full_image

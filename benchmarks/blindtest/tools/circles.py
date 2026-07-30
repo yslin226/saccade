@@ -269,7 +269,14 @@ def circle_tool(*, tangent_counts: bool) -> Tool:
         # A view without both circles yields no verdict. Reporting it as a
         # measurement anyway would let "I could not see them" masquerade as
         # "they do not overlap".
-        return ToolResult(value=value, is_measurement="overlap" in value)
+        #
+        # answer_key names the verdict, so centre_distance and radius_sum stay
+        # in the evidence chain without being checked against the answer.
+        return ToolResult(
+            value=value,
+            is_measurement="overlap" in value,
+            answer_key="overlap",
+        )
 
     return Tool(
         name="circle_geometry",

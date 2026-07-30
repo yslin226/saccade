@@ -279,6 +279,57 @@ class TestStructuredOutput:
         assert result.structured == Answer(overlapping=True)
 
 
+class TestMeasurementsFromCropsCannotJudge:
+    """Regression from a live run on BlindTest's line-crossing task.
+
+    A tool measuring a magnified quadrant honestly reports what is in the
+    quadrant. Treated as evidence about the whole picture, it contradicted
+    correct answers: 305 false conflicts in one 150-item run.
+    """
+
+    async def test_a_crop_measurement_does_not_create_a_conflict(self) -> None:
+        agent = ActiveVisionAgent(
+            FakeVLM(["{2}"], exhausted="repeat_last"),
+            tools=[measuring_tool({"crossings": 1})],
+            max_steps=3,
+            confidence_threshold=0.99,
+        )
+        result = await agent.investigate_async(an_image(), "how many crossings?")
+
+        # Step 0 sees the whole image and legitimately conflicts (said 2,
+        # measured 1). Later steps are crops and must not add more.
+        cropped = [s for s in result.evidence_chain if not s.viewport.covers_full_image]
+        assert cropped, "the run should have magnified at least once"
+        assert all(s.verification is None or s.verification.conflict is None for s in cropped)
+
+    async def test_a_full_image_measurement_still_judges(self) -> None:
+        agent = ActiveVisionAgent(
+            FakeVLM(["{2}"], exhausted="repeat_last"),
+            tools=[measuring_tool({"crossings": 1})],
+            max_steps=1,
+        )
+        result = await agent.investigate_async(an_image(), "how many crossings?")
+
+        first = result.evidence_chain[0]
+        assert first.viewport.covers_full_image
+        assert first.verification is not None
+        assert first.verification.conflict is not None
+
+    async def test_a_crop_measurement_cannot_confirm_either(self) -> None:
+        """It is not evidence in either direction."""
+        agent = ActiveVisionAgent(
+            FakeVLM(["{1}"], exhausted="repeat_last"),
+            tools=[measuring_tool({"crossings": 1})],
+            max_steps=3,
+            confidence_threshold=0.99,
+        )
+        result = await agent.investigate_async(an_image(), "how many crossings?")
+
+        cropped = [s for s in result.evidence_chain if not s.viewport.covers_full_image]
+        for step in cropped:
+            assert step.verification is None or step.verification.method == "none"
+
+
 class TestEvidenceRecordsWhy:
     """Rule 8: a chain showing only coordinates cannot be argued with."""
 
