@@ -117,16 +117,14 @@ def suspect_frames(
     Returns:
         ``(previous, current, implausible)`` for each suspect frame.
     """
-    from benchmarks.pose_probe.continuity import MAX_JOINT_TRAVEL_PX
-
-    threshold = MAX_JOINT_TRAVEL_PX if limit is None else limit
     found = []
     for previous, current in itertools.pairwise(poses):
         if not (previous.detected and current.detected):
             continue
         if current.frame - previous.frame != 1:
             continue
-        bad = implausible_joints(previous.joints, current.joints, limit=threshold)
+        # limit=None lets the check normalise by the subject's shoulder width.
+        bad = implausible_joints(previous.joints, current.joints, limit=limit)
         if bad:
             found.append((previous, current, bad))
     return found
