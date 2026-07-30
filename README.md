@@ -39,46 +39,78 @@ new architectures and RL budgets. This is the cheap path up the same hill:
 find out how far you get by giving an existing model agency over its own
 attention.
 
-## First results
+**How far, so far: not very.** The measurements below say the extra fixations
+buy nothing on BlindTest, while the refereeing buys a great deal on a weak
+model and nothing on a strong one. Read that section before the pitch above
+convinces you of anything.
 
-On BlindTest's Touching Circles — 150 items, sampled across the full range
-of difficulty rather than the easy end:
+## What the measurements say
+
+150 items per run, sampled across the full difficulty range rather than the
+easy end. Every figure below traces to a JSON file in
+[`benchmarks/blindtest/results/`](benchmarks/blindtest/results/) with
+per-item answers.
+
+**Touching Circles**
 
 | | GPT-5.4 | GPT-4.1 |
 |---|---|---|
-| One look (what a VLM does today) | 90.7% | 78.0% |
+| One look — what a VLM does today | 90.7% | 78.0% |
 | Looking several times | 93.3% | 77.3% |
-| Looking several times, checked against geometry | **100.0%** | **89.3%** |
+| Looking several times, checked against geometry | 94.0% | 89.3% |
+| **Geometry alone, no model at all** | **98.0%** | **98.0%** |
 
-The middle row is the interesting one. Letting the model look again and
-again is not what helps: +2.7% on one model and −0.7% on the other, neither
-distinguishable from noise (McNemar p = 0.39 and p = 1.00). What helps is
-giving it something that can actually measure — +6.7% and +12.0% on top,
-p = 0.002 and p = 0.00001, and across both models that step fixed 28 items
-while breaking none.
+Three things fall out of that table, and only one of them is comfortable.
 
-That is worth stating plainly, because it is not the obvious result. The
-gain does not come from more attention. It comes from attention plus a
-referee: the tool overruled the model 17 times on GPT-5.4 and 51 times on
-GPT-4.1, and every one of those was the model being talked out of a wrong
-answer by a number.
+**Looking again does not help.** +2.7% on one model, −0.7% on the other,
+neither distinguishable from noise (p = 0.39, p = 1.00). Same on the other
+tasks measured. Whatever this library is worth, it is not worth it for the
+extra fixations.
 
-One task of seven, two models, one sample size. The remaining tasks and a
-wider model sweep are still to come, and the figures above are worth exactly
-as much as that caveat implies. Every run is in
-[`benchmarks/blindtest/results/`](benchmarks/blindtest/results/) with
-per-item answers, so none of this has to be taken on trust.
+**A referee helps a weak model and not a strong one.** GPT-4.1 gained 12.0%
+from being checked against geometry (p = 0.00001, 18 items fixed, none
+broken). GPT-5.4 gained 0.7% (p = 1.00). The tool overruled GPT-4.1 fifty-one
+times and GPT-5.4 twelve times — a model that is already right leaves a
+referee nothing to do.
+
+**On this task the model is the weak link.** Geometry alone beats every
+configuration involving a model, and on GPT-4.1 it beats the full loop by
+8.7% (p = 0.001). Asked whether two circles touch, the honest answer is to
+measure the circles and not ask a language model at all.
+
+### The benchmark has run out of room
+
+| Task | Model | One look | Headroom |
+|---|---|---|---|
+| Counting Grid — Blank | GPT-5.4 | 100.0% | 0.0% |
+| Line Plot Intersections | GPT-5.4 | 98.7% | 1.3% |
+| Touching Circles | GPT-5.4 | 90.7% | 9.3% |
+| Touching Circles | GPT-4.1 | 78.0% | 22.0% |
+
+BlindTest's headline number is 58.07%, and the task the paper singles out —
+counting line intersections — was 56.84%, near chance. GPT-5.4 scores 98.7%
+on it cold, and 100% on counting rows and columns in a 2000×2000 grid. The
+models have caught up with the benchmark since it was published.
+
+That closes off the experiment from both ends. Where geometry can settle a
+task, the tool wins alone and the loop is overhead. Where it cannot, the
+current models are already at ceiling and nothing can show up. Choosing this
+benchmark as the main evidence was a mistake on my part; it can no longer
+test the idea it was chosen to test.
 
 ## Where this is now
 
-**M2, partway.** The loop runs, the verifier verifies, and the first
-measurement tool is in. Circle detection is validated against the dataset's
-own geometry rather than by eye — it agrees with the published answer on
-99.2% of 1190 items, which is what makes it fit to referee a model scoring
-90%.
+**M2 done, and it did not go the way the pitch implies.** The loop runs, the
+verifier verifies, both measurement tools are validated against the dataset's
+own geometry (99.2% and 99.6% agreement), and the ablation is clean enough to
+say that the interesting half of the idea — measurement over guessing — holds,
+while the half the name refers to does not show up here.
 
-Still to do: measurement tools for the other tasks, the full seven-task
-sweep, and more models.
+Next is the case this benchmark cannot provide: video, where the detector
+itself is unreliable. MediaPipe misplaces joints through occlusion and motion
+blur, so "the tool said so" stops being sufficient and something has to decide
+which frames to distrust. That is where looking again should earn its keep, if
+it earns it anywhere.
 
 ## How it works
 
@@ -132,10 +164,12 @@ build. The reasoning is in [CLAUDE.md](CLAUDE.md).
 
 - [x] **M0** — skeleton, public types, architecture guard
 - [x] **M1** — Perceive-Verify loop, three visual actions, response cache, benchmark runner
-- [ ] **M2** — measurement tools, full BlindTest across models, ablations
-  - [x] circle geometry, verified against the dataset at 99.2%
-  - [x] three-way ablation on Touching Circles, two models
-  - [ ] line intersections, then the remaining five tasks
+- [x] **M2** — measurement tools and the ablation that settled what works
+  - [x] circle geometry (99.2%) and line crossings (99.6%), both validated against the dataset
+  - [x] four-way ablation including a no-model control, two models, three tasks
+  - [x] the finding: refereeing helps a weak model, extra looks help nothing,
+        and this benchmark is out of headroom
+- [ ] **M3** — video, where the detector is unreliable and the tool cannot simply be trusted
 - [ ] **M3** — Sandlot Baseball: pose estimation, metrics, run-to-run consistency
 - [ ] **M4** — active vision applied to occluded and motion-blurred frames
 - [ ] **M5** — retrieval-backed interpretation
