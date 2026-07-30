@@ -217,10 +217,18 @@ class Planner:
 def _settled_by_measurement(evidence: list[EvidenceStep]) -> EvidenceStep | None:
     """The step where a measurement confirmed what the model said, if any.
 
-    Once a computed result has backed an answer, further looks cannot make
-    it more true — and in practice they make things worse, since later steps
-    are magnified crops where the subject is partly outside the view. The
-    referee agreeing is the strongest stopping signal the loop has.
+    Once a computed result has backed an answer, looking again cannot make it
+    more true, so the referee agreeing is the strongest stopping signal the
+    loop has.
+
+    Note what this does *not* say: it is not a claim that one look is enough
+    in general. It stops only when a measurement has settled the question.
+    Tasks with no measurement tool keep exploring, and so do tasks where the
+    subject is small enough that magnifying genuinely helps — reading a
+    circled letter, or judging an occluded joint in a video frame. On
+    Touching Circles the two shapes fill the frame, so a magnified crop
+    always cuts one of them; that is a property of the task, not a rule about
+    saccades.
     """
     for step in evidence:
         if step.verification is not None and step.verification.passed:

@@ -203,6 +203,20 @@ class TestMeasurementSettlesIt:
         evidence = [step(0, BBox(x=0, y=0, w=200, h=200))]
         assert planner.plan_next(evidence, confidence=0.2).action is not Action.STOP
 
+    def test_a_task_with_no_measurement_tool_keeps_exploring(self) -> None:
+        """Stopping is triggered by a measurement, not by having looked once.
+
+        Most tasks have no computable referee — a circled letter, an occluded
+        joint — and those must still get their extra looks. Only Touching
+        Circles happens to be settled by the opening view.
+        """
+        planner = Planner(SIZE, max_steps=4)
+        evidence = [step(0, BBox(x=0, y=0, w=200, h=200))]
+
+        planned = planner.plan_next(evidence, confidence=0.2)
+        assert planned.action is Action.ZOOM
+        assert planned.viewport.bbox != BBox(x=0, y=0, w=200, h=200)
+
     def test_a_conflict_still_outranks_a_settled_step(self) -> None:
         """A later disagreement means the question is open again."""
         planner = Planner(SIZE)
