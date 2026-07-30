@@ -18,3 +18,12 @@ benchmarks/blindtest/data/
 models/*.pt
 
 # uv.lock MUST be committed — do not ignore it.
+
+# Cached pose detections and frames — re-derivable from the video.
+benchmarks/pose_probe/cache/
+happy/
+models/*.task
+
+# Quarantined downloads awaiting inspection.
+data/quarantine/
+data/PennAction/
