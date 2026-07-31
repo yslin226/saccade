@@ -27,3 +27,6 @@ models/*.task
 # Quarantined downloads awaiting inspection.
 data/quarantine/
 data/PennAction/
+
+# YOLO weights, re-downloadable.
+yolo*.pt
