@@ -104,7 +104,9 @@ def verify(observation: Observation, results: list[ToolResult]) -> Verification:
         )
 
     computed = _collect(measurements)
-    conflict = _find_conflict(observation.statement, computed, _answer_keys(measurements))
+    conflict, verdict_key = _find_conflict(
+        observation.statement, computed, _answer_keys(measurements)
+    )
 
     if conflict is None:
         return Verification(passed=True, method=_method_name(measurements), computed=computed)
@@ -114,6 +116,7 @@ def verify(observation: Observation, results: list[ToolResult]) -> Verification:
         method=_method_name(measurements),
         computed=computed,
         conflict=conflict,
+        verdict_key=verdict_key,
     )
 
 
@@ -159,7 +162,9 @@ def _method_name(measurements: list[ToolResult]) -> str:
     return ", ".join(names) if names else "measurement"
 
 
-def _find_conflict(statement: str, computed: dict[str, Any], answer_keys: set[str]) -> str | None:
+def _find_conflict(
+    statement: str, computed: dict[str, Any], answer_keys: set[str]
+) -> tuple[str | None, str | None]:
     """Look for a measurement the statement contradicts.
 
     Two checks, both deliberately conservative — a false conflict sends the
@@ -172,6 +177,12 @@ def _find_conflict(statement: str, computed: dict[str, Any], answer_keys: set[st
     When a tool named its ``answer_key``, only that key is judged. The rest
     is diagnostic context: a line counter reporting 1 crossing across 300
     shared columns must not have "1" checked against 300.
+
+    Returns:
+        The conflict description and the key that produced it, or
+        ``(None, None)``. The key travels with the description because the
+        caller has to be able to answer *with* the measurement, not merely
+        report that one disagreed.
     """
     lowered = statement.lower()
     judged = {k: v for k, v in computed.items() if k in answer_keys} if answer_keys else computed
@@ -180,16 +191,16 @@ def _find_conflict(statement: str, computed: dict[str, Any], answer_keys: set[st
         if isinstance(value, bool):
             conflict = _boolean_conflict(lowered, key, value)
             if conflict:
-                return conflict
+                return conflict, key
 
     for key, value in judged.items():
         if isinstance(value, bool) or not isinstance(value, int | float):
             continue
         conflict = _count_conflict(lowered, key, value)
         if conflict:
-            return conflict
+            return conflict, key
 
-    return None
+    return None, None
 
 
 def _answer_keys(measurements: list[ToolResult]) -> set[str]:

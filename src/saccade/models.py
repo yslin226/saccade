@@ -114,6 +114,11 @@ class Verification(BaseModel):
     ``method`` names the tool that produced the numbers, and ``computed``
     holds them. When ``passed`` is False, ``conflict`` explains what
     disagreed — that text is what the planner uses to pick a different angle.
+
+    ``verdict_key`` names the entry of ``computed`` the tool declared as its
+    answer. It is what makes an overruling possible: knowing a statement is
+    contradicted is not enough to replace it, since ``computed`` also holds
+    diagnostic figures that are not answers to anything.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -122,12 +127,30 @@ class Verification(BaseModel):
     method: str
     computed: dict[str, Any] = Field(default_factory=dict)
     conflict: str | None = None
+    verdict_key: str | None = None
 
     @model_validator(mode="after")
     def _conflict_requires_failure(self) -> Verification:
         if self.passed and self.conflict is not None:
             raise ValueError("a passed verification cannot carry a conflict")
         return self
+
+    @model_validator(mode="after")
+    def _verdict_key_must_be_computed(self) -> Verification:
+        if self.verdict_key is not None and self.verdict_key not in self.computed:
+            raise ValueError(f"verdict_key {self.verdict_key!r} is not among the computed values")
+        return self
+
+    @property
+    def verdict(self) -> Any | None:
+        """The measured value that settles the question, when a tool named one.
+
+        ``None`` means no tool claimed to answer — either none ran, or the
+        ones that did reported only context. A caller must not read that as
+        a measurement of ``False``: use :attr:`verdict_key` to tell the two
+        apart.
+        """
+        return self.computed.get(self.verdict_key) if self.verdict_key is not None else None
 
 
 class EvidenceStep(BaseModel):
