@@ -1,11 +1,13 @@
 """Tests for the detector-disagreement signal.
 
-The first signal in this project that predicts pose error better than chance:
-AUROC 0.713 over 1320 held-out frames, p = 7e-27. Four single-detector
-geometric signals failed at the same task, three of them worse than chance.
+The best signal this project has found for predicting pose error, and still
+not good enough: AUROC 0.638 over 890 held-out frames, against a bar of 0.70
+fixed before the run. Four single-detector geometric signals did worse, three
+of them worse than chance.
 
-So this one is load-bearing, and the tests treat it as a referee: a wrong
-verdict here decides whether a frame's measurements enter a calculation.
+An earlier measurement said 0.713 and was wrong — it was reading a bug in
+shoulder_width() rather than the signal. Two tests below pin the fix, because
+that bug was invisible except through ground truth.
 """
 
 from __future__ import annotations
@@ -107,6 +109,73 @@ class TestNormalisation:
         first = [reading("R wrist", 0, 0)]
         second = [reading("R wrist", 90, 0)]
         assert disagreement_features(first, second).per_joint == {}
+
+
+class TestCollapsedScale:
+    """Regression: a collapsed shoulder width made every gap enormous.
+
+    shoulder_width() rejected only widths below 1px. A failed detection
+    typically reports a few pixels, and a normal 60px gap divided by 2px
+    reads as 30 body widths. One run reported 157, which is not a quantity
+    that exists, and the inflated values landed on the frames that were
+    already wrong — so the bug scored AUROC 0.713 while the signal scored
+    0.638.
+    """
+
+    def test_a_collapsed_shoulder_width_yields_no_comparison(self) -> None:
+        collapsed = [
+            reading("L shoulder", 400, 300),
+            reading("R shoulder", 402, 300),
+            reading("R wrist", 500, 400),
+        ]
+        other = [
+            reading("L shoulder", 400, 300),
+            reading("R shoulder", 402, 300),
+            reading("R wrist", 560, 400),
+        ]
+        assert disagreement_features(collapsed, other).per_joint == {}
+
+    def test_no_gap_can_exceed_a_plausible_body(self) -> None:
+        """Whatever the inputs, a gap of 150 body widths means a broken scale."""
+        first = pose(reading("R wrist", 0, 0))
+        second = pose(reading("R wrist", 470, 350))
+
+        gaps = disagreement_features(first, second)
+        assert all(gap < 10.0 for gap in gaps.per_joint.values())
+
+
+class TestLowConfidenceKeypoints:
+    """A keypoint at 0.08 confidence is a guess about where a limb might be.
+
+    The distance between two guesses is not disagreement about an
+    observation, and both detectors emit them routinely for limbs outside
+    the frame.
+    """
+
+    def test_a_low_confidence_joint_is_excluded(self) -> None:
+        first = pose(reading("R wrist", 500, 400, confidence=0.05))
+        second = pose(reading("R wrist", 600, 400, confidence=0.9))
+
+        assert "R wrist" not in disagreement_features(first, second).per_joint
+
+    def test_low_confidence_on_either_side_excludes_it(self) -> None:
+        first = pose(reading("R wrist", 500, 400, confidence=0.9))
+        second = pose(reading("R wrist", 600, 400, confidence=0.05))
+
+        assert "R wrist" not in disagreement_features(first, second).per_joint
+
+    def test_confident_joints_are_still_compared(self) -> None:
+        first = pose(reading("R wrist", 500, 400, confidence=0.8))
+        second = pose(reading("R wrist", 560, 400, confidence=0.8))
+
+        assert disagreement_features(first, second).per_joint["R wrist"] == pytest.approx(0.6)
+
+    def test_the_threshold_can_be_relaxed(self) -> None:
+        first = pose(reading("R wrist", 500, 400, confidence=0.1))
+        second = pose(reading("R wrist", 560, 400, confidence=0.1))
+
+        assert "R wrist" not in disagreement_features(first, second).per_joint
+        assert "R wrist" in disagreement_features(first, second, min_confidence=0.05).per_joint
 
 
 class TestPartialOverlap:

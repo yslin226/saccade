@@ -1,33 +1,39 @@
-"""Two detectors disagreeing is what predicts a bad pose estimate.
+"""Two detectors disagreeing predicts a bad pose estimate — weakly.
 
 Four attempts to predict it from a single detector's own geometry failed:
 travel 0.64x on held-out actions, bone length 1.00x, absolute pixel travel
 1.02x, and a nine-feature classifier at AUROC 0.42 — worse than chance. The
 information is not in one detector's output.
 
-It is in the gap between two. MediaPipe and YOLO11-pose are trained
+Some of it is in the gap between two. MediaPipe and YOLO11-pose are trained
 separately, on different data, with different architectures, so their errors
-have no reason to coincide. Where they agree both are probably right; where
-they diverge at least one is wrong, and nothing here needs to know which.
+have no particular reason to coincide.
 
-Measured on 1320 frames of four actions never used for any tuning:
+Measured on 890 frames of four actions never used for any tuning:
 
-    mean_gap     AUROC 0.713    p = 7e-27
-    max_gap            0.710
-    median_gap         0.712
-    gap_spread         0.709
+    max_gap      AUROC 0.638
+    mean_gap           0.628
+    gap_spread         0.626
+    median_gap         0.603
 
-    golf_swing         0.951        pushup    0.845
-    squat              0.845        tennis    0.659
+    pushup             0.845       golf_swing     0.739
+    tennis_serve       0.673       squat          0.613
 
 The bar was fixed at 0.70 before the run, in this docstring, because the best
-single-detector signal reached 0.607 and anything less would not justify a
-second model in the pipeline.
+single-detector signal reached 0.607 and less than 0.70 would not justify a
+second model at inference time. 0.638 does not clear it.
 
-No training, no fitted parameters: mean_gap is the average distance between
-where the two detectors put the same joint, in shoulder widths. What it still
-cannot say is *which* detector is wrong, or why — that is what the agent is
-for.
+An earlier run of this same code scored 0.713 and appeared to pass. It was
+measuring a bug. shoulder_width() accepted collapsed detections of a couple of
+pixels, and dividing an ordinary 60px gap by 2px produced disagreements of 150
+body widths — on exactly the frames that were badly wrong anyway. The bug
+predicted the error; the signal did not. Fixing the divisor and dropping
+keypoints reported below 0.30 confidence cost 430 frames and 0.075 AUROC.
+
+What stands: 0.638 over 890 frames is not chance, and it beats every
+single-detector signal tried. What does not: it is weak, uneven across actions
+(0.61 to 0.85), and needs a second model running. No training and no fitted
+parameters is the one thing in its favour.
 
 Both detectors live in benchmarks/, never in src/saccade — rule 2.
 """
