@@ -67,6 +67,12 @@ MAX_TRAVEL_PER_SHOULDER_WIDTH = 0.55
 # the caveat above: only sound when every frame is framed alike.
 FALLBACK_TRAVEL_PX = 150.0
 
+# Below this, a reported shoulder width is a detection failure rather than a
+# person seen edge-on, and using it as a divisor produces nonsense. Penn Action
+# frames are at most 640px wide and a recognisable person spans tens of pixels
+# across the shoulders, so anything under 20 is the detector collapsing.
+MIN_SHOULDER_WIDTH_PX = 20.0
+
 
 @dataclass(frozen=True)
 class JointReading:
@@ -105,6 +111,12 @@ def shoulder_width(readings: list[JointReading]) -> float | None:
     Shoulders because they are the most reliably detected pair on a torso and
     barely change apparent separation as a person turns — unlike hips, which
     foreshorten badly from the side.
+
+    Returns None when the measurement is too small to divide by. A person
+    filmed edge-on can genuinely show narrow shoulders, but a few pixels means
+    the detector has collapsed them, and dividing by that turns every ordinary
+    gap into an apparent catastrophe — one run reported disagreements of 157
+    body widths, which is not a quantity that exists.
     """
     positions = {r.name: r for r in readings}
     left, right = positions.get("L shoulder"), positions.get("R shoulder")
@@ -112,9 +124,7 @@ def shoulder_width(readings: list[JointReading]) -> float | None:
         return None
 
     width = ((left.x - right.x) ** 2 + (left.y - right.y) ** 2) ** 0.5
-    # A near-zero width means the shoulders coincide, which is a detection
-    # failure rather than a scale.
-    return width if width > 1.0 else None
+    return width if width >= MIN_SHOULDER_WIDTH_PX else None
 
 
 def implausible_joints(

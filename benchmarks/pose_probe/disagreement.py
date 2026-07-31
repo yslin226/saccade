@@ -46,6 +46,7 @@ from saccade.tools import Tool, ToolResult
 
 __all__ = [
     "COMMON_JOINTS",
+    "MIN_USABLE_CONFIDENCE",
     "SUCCESS_AUROC",
     "SUSPECT_MEAN_GAP",
     "DisagreementParams",
@@ -65,6 +66,13 @@ SUCCESS_AUROC = 0.70
 # is markedly worse, but the threshold is a convenience for callers who need a
 # yes or no. The continuous value is the better signal and is always reported.
 SUSPECT_MEAN_GAP = 0.10
+
+# Joints either detector reports below this are excluded from the comparison.
+#
+# A keypoint at 0.08 confidence is a guess about where a limb might be, and
+# the distance between two guesses is not disagreement about an observation.
+# Both detectors emit these routinely for limbs outside the frame.
+MIN_USABLE_CONFIDENCE = 0.30
 
 # The joints both detectors report, by their own indices.
 #
@@ -132,6 +140,7 @@ def disagreement_features(
     second: list[JointReading],
     *,
     scale: float | None = None,
+    min_confidence: float = MIN_USABLE_CONFIDENCE,
 ) -> Disagreement:
     """Measure how far apart two detectors placed each joint.
 
@@ -144,6 +153,9 @@ def disagreement_features(
         second: The other's.
         scale: Shoulder width to normalise by. Taken from the first detector
             when omitted.
+        min_confidence: Joints either detector reports below this are skipped.
+            A detector placing a keypoint at 0.08 confidence is guessing, and
+            disagreeing with a guess says nothing about either estimate.
     """
     by_name_first = {r.name: r for r in first}
     by_name_second = {r.name: r for r in second}
@@ -155,6 +167,8 @@ def disagreement_features(
     gaps: dict[str, float] = {}
     for name in set(by_name_first) & set(by_name_second):
         a, b = by_name_first[name], by_name_second[name]
+        if a.confidence < min_confidence or b.confidence < min_confidence:
+            continue
         gaps[name] = float(np.hypot(a.x - b.x, a.y - b.y)) / width
 
     return Disagreement(per_joint=gaps)
