@@ -21,7 +21,7 @@ from PIL.Image import Image
 
 from saccade.models import VLMResponse
 
-__all__ = ["FileCache", "MemoryCache", "make_cache_key"]
+__all__ = ["FileCache", "MemoryCache", "NullCache", "make_cache_key"]
 
 logger = logging.getLogger("saccade")
 
@@ -110,6 +110,28 @@ class FileCache:
 
     def __len__(self) -> int:
         return sum(1 for _ in self.directory.glob("*.json"))
+
+
+class NullCache:
+    """Remembers nothing, so every call reaches the model.
+
+    Rule 6 makes caching the default for a good reason — a benchmark should
+    not pay twice for the same question. But a cache also silently turns a
+    re-run into a replay: an experiment that changes how the loop behaves
+    will still receive the answers the *old* loop provoked, and the run looks
+    like a fresh measurement while measuring nothing new.
+
+    Pass this when the model's behaviour is the thing under test.
+    """
+
+    def get(self, key: str) -> VLMResponse | None:
+        return None
+
+    def set(self, key: str, value: VLMResponse) -> None:
+        return None
+
+    def __len__(self) -> int:
+        return 0
 
 
 class MemoryCache:

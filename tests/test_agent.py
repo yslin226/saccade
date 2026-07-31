@@ -33,6 +33,7 @@ class TestKeywordOnlyContract:
             "max_steps",
             "confidence_threshold",
             "tools",
+            "choose_tools",
             "on_step",
         }
 

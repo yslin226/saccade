@@ -18,6 +18,7 @@ from typing import Any
 
 from PIL.Image import Image
 
+from saccade._chooser import choose_tools
 from saccade._evidence import EvidenceChain
 from saccade._observer import Observer
 from saccade._planner import Action, Planner
@@ -43,6 +44,12 @@ class ActiveVisionAgent:
         max_steps: Hard ceiling on loop iterations.
         confidence_threshold: Stop once verified confidence reaches this.
         tools: Extra tools, beyond the built-in visual actions.
+        choose_tools: Ask the model which tools to run each step, instead of
+            running all of them. Off by default, because running everything is
+            right when every tool was written for the question. It stops being
+            right as the toolbox grows: a tool that measures the wrong thing
+            does not merely waste a call — it produces a confident number the
+            verifier will use to overrule the model.
         on_step: Called after each step, for tracing or progress display.
 
     Example:
@@ -60,6 +67,7 @@ class ActiveVisionAgent:
         max_steps: int = 8,
         confidence_threshold: float = 0.8,
         tools: list[Tool] | None = None,
+        choose_tools: bool = False,
         on_step: Callable[[EvidenceStep], None] | None = None,
     ) -> None:
         if max_steps < 1:
@@ -72,6 +80,7 @@ class ActiveVisionAgent:
         self.max_steps = max_steps
         self.confidence_threshold = confidence_threshold
         self._tools: dict[str, Tool] = {tool.name: tool for tool in (tools or [])}
+        self._choose_tools = choose_tools
         self._on_step = on_step
 
     @property
@@ -115,7 +124,14 @@ class ActiveVisionAgent:
 
             observation, response = await observer.observe([view], question, output_type=expect)
 
-            results = self._run_tools(view, planned.viewport)
+            reason = planned.reason
+            selected: list[Tool] | None = None
+            if self._choose_tools and self._tools:
+                choice = await choose_tools(self._vlm, [view], question, self.tools)
+                selected = choice.tools
+                reason = f"{reason}; {choice.reason}"
+
+            results = self._run_tools(view, planned.viewport, selected)
             verification = verify(observation, results)
             confidence = adjust_confidence(confidence, verification)
 
@@ -132,7 +148,7 @@ class ActiveVisionAgent:
                 viewport=planned.viewport,
                 observation=observation,
                 verification=verification,
-                reason=planned.reason,
+                reason=reason,
             )
             if self._on_step is not None:
                 self._on_step(step)
@@ -177,8 +193,13 @@ class ActiveVisionAgent:
             "await investigate_async() instead"
         )
 
-    def _run_tools(self, view: Image, viewport: Viewport) -> list[ToolResult]:
-        """Run every registered tool over the current view.
+    def _run_tools(
+        self,
+        view: Image,
+        viewport: Viewport,
+        tools: list[Tool] | None = None,
+    ) -> list[ToolResult]:
+        """Run tools over the current view — every registered one by default.
 
         Tools are invoked through ``tool.fn`` rather than ``tool(...)``: the
         latter validates arguments through ``params_schema``, and a Pydantic
@@ -189,9 +210,15 @@ class ActiveVisionAgent:
         A tool that raises is recorded and skipped rather than aborting the
         investigation: one broken detector should not discard the evidence
         already gathered.
+
+        Args:
+            view: The image as the agent currently sees it.
+            viewport: Where that view sits in the source image.
+            tools: A subset to run. ``None`` runs all of them, which is what
+                the loop does unless a chooser narrowed the list.
         """
         results: list[ToolResult] = []
-        for tool in self._tools.values():
+        for tool in self._tools.values() if tools is None else tools:
             try:
                 result = tool.fn(image=view, viewport=viewport)
             except ToolError:

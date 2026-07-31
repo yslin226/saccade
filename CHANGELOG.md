@@ -39,6 +39,36 @@ recorded.
 
 ### Added
 
+- **`ActiveVisionAgent(..., choose_tools=True)` — the model picks which tools
+  to run.** Off by default. The loop otherwise runs every registered tool on
+  every step, which is right only while every tool was written for the
+  question: a tool that measures the wrong thing does not merely waste a call,
+  it produces a confident number the verifier uses to overrule the model.
+
+  Measured on `qwen/qwen3-vl-8b-instruct` with both tasks' tools offered on
+  both tasks, cache disabled so the model was genuinely asked:
+
+  | | baseline | one right tool, always run | whole toolbox, model chooses |
+  |---|---|---|---|
+  | touching circles | 65.3% | 98.0% | **99.0%** |
+  | line intersections | 86.7% | 99.3% | **100.0%** |
+
+  Over 40 separately probed items the model picked the applicable tool 40
+  times and fell back 0 times. Choosing an instrument and reading it stay
+  separate jobs: only the first is delegated, and `is_measurement` still
+  governs whether the resulting measurement may overrule anything.
+
+  A failed choice — an unreadable reply, a hallucinated tool name, a network
+  error — runs every tool, which is the previous behaviour. `ToolChoice`
+  records `fallback` so "chose everything" stays distinguishable from "was
+  not understood"; the two run identically and mean opposite things.
+
+- `NullCache` — a `CachePort` that stores nothing, exposed as `--no-cache` on
+  the benchmark runner. Rule 6 makes caching the default for good reason, but
+  a cache turns a re-run into a replay: an experiment that changes how the
+  loop behaves still receives the answers the *old* loop provoked, and looks
+  like a fresh measurement while measuring nothing new.
+
 - `Verification.verdict_key` — the entry of `computed` that a tool declared as
   its answer, or `None` when no tool claimed one. Knowing a statement is
   contradicted is not enough to replace it: `computed` also carries diagnostic

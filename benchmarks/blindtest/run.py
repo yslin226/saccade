@@ -40,8 +40,8 @@ from benchmarks.blindtest.models import build_vlm, default_rpm
 from benchmarks.blindtest.scoring import score
 from benchmarks.blindtest.tools import circle_tool, line_tool
 from saccade import ActiveVisionAgent, Tool, VLMError
-from saccade.ports import VLMPort
-from saccade.vlm import FileCache
+from saccade.ports import CachePort, VLMPort
+from saccade.vlm import FileCache, NullCache
 
 T = TypeVar("T")
 
@@ -59,6 +59,11 @@ DEFAULT_RPM = 5
 _RETRY_AFTER = re.compile(r"retry in ([\d.]+)s", re.IGNORECASE)
 _MAX_RETRIES = 4
 
+# Sentinel for --no-cache. A cache turns a re-run into a replay: a change to
+# how the loop behaves still receives the answers the *old* loop provoked,
+# so the run looks like a fresh measurement while measuring nothing new.
+_NO_CACHE = "\x00none"
+
 # The comparison M2 exists to make.
 #
 # "saccade" without tools isolates what extra looks are worth on their own,
@@ -70,7 +75,12 @@ _MAX_RETRIES = 4
 # the thing it referees, the honest question is whether the model contributes
 # anything at all — and a benchmark that cannot embarrass its own thesis is
 # not measuring.
-MODES = ("baseline", "saccade", "saccade-tools", "tools-only")
+#
+# "saccade-choose" is the one mode where the model is an agent rather than a
+# subject. It gets the whole toolbox — including the tool for the *other*
+# task — and decides what to run. Every other mode hands it the right tool
+# and asks nothing.
+MODES = ("baseline", "saccade", "saccade-tools", "saccade-choose", "tools-only")
 
 
 class RateLimiter:
@@ -279,6 +289,24 @@ def _referee_for(item: BlindTestItem) -> Tool | None:
     return None
 
 
+def _toolbox_for(item: BlindTestItem) -> list[Tool]:
+    """Every tool an agent could reach for, right one included.
+
+    Running all of them is what the loop does by default, and on this
+    benchmark that is enough: each task has exactly one tool and it solves
+    exactly that task. The arrangement flatters the design. An application
+    registers a toolbox, and the tool for one question measures the wrong
+    thing when asked another — which is not merely a wasted call, since a
+    measurement is what the verifier uses to overrule the model.
+
+    So both tools are offered on both tasks. The circle tool asked about
+    lines, or the line tool asked about circles, returns a number about
+    something nobody asked about. Whether the model can tell them apart is
+    the question ``saccade-choose`` exists to answer.
+    """
+    return [circle_tool(tangent_counts="touching" in item.prompt), line_tool()]
+
+
 def _report(progress: bool, index: int, total: int, outcome: ItemOutcome) -> None:
     if not progress:
         return
@@ -334,7 +362,10 @@ async def run(
         limit: How many items to run.
         offset: Where to start, for resuming.
         max_steps: Step budget in saccade mode.
-        cache_dir: Where to cache responses.
+        cache_dir: Where to cache responses. Pass ``_NO_CACHE`` (the CLI's
+            ``--no-cache``) to disable caching entirely, which is what an
+            experiment changing the loop's behaviour needs: otherwise the
+            re-run replays answers the previous loop provoked.
         vlm: Inject a model directly — used by the tests to run the whole
             pipeline on FakeVLM without touching the network.
         progress: Print per-item progress.
@@ -351,7 +382,10 @@ async def run(
     if vlm is None and mode != "tools-only":
         vlm = build_vlm(model)
 
-    cache = FileCache(cache_dir) if cache_dir else FileCache()
+    if cache_dir == _NO_CACHE:
+        cache: CachePort = NullCache()
+    else:
+        cache = FileCache(cache_dir) if cache_dir else FileCache()
 
     if stratify:
         # Fetch a wide slice, then spread the sample across it. Taking the
@@ -366,7 +400,8 @@ async def run(
     if not items:
         raise RuntimeError(f"no items loaded for task {task!r}")
 
-    if mode in ("saccade-tools", "tools-only") and items[0].task not in MEASURABLE:
+    needs_referee = mode in ("saccade-tools", "saccade-choose", "tools-only")
+    if needs_referee and items[0].task not in MEASURABLE:
         # Running these without a referee would silently reproduce another
         # mode and file the result under this one, which is how a comparison
         # table starts lying.
@@ -394,11 +429,19 @@ async def run(
 
         # A fresh agent per item: in tools mode the referee is configured
         # from the question, and the sample mixes both phrasings.
-        agent = ActiveVisionAgent(vlm, cache=cache, max_steps=max_steps)
+        agent = ActiveVisionAgent(
+            vlm,
+            cache=cache,
+            max_steps=max_steps,
+            choose_tools=mode == "saccade-choose",
+        )
         if mode == "saccade-tools":
             referee = _referee_for(item)
             if referee is not None:
                 agent.register_tool(referee)
+        elif mode == "saccade-choose":
+            for tool in _toolbox_for(item):
+                agent.register_tool(tool)
 
         outcome = await run_saccade(agent, item, limiter)
         outcomes.append(outcome)
@@ -481,6 +524,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--max-steps", type=int, default=4)
     parser.add_argument("--cache-dir", default=None)
+    parser.add_argument(
+        "--no-cache",
+        action="store_const",
+        const=_NO_CACHE,
+        dest="cache_dir",
+        help="ask the model every time; use when the loop's behaviour is what changed",
+    )
     parser.add_argument(
         "--rpm",
         type=int,
