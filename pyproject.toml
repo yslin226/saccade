@@ -42,11 +42,26 @@ dev = [
     # Benchmarks read GOOGLE_API_KEY from .env. Declared explicitly rather
     # than relied on as a transitive dependency of pydantic-ai.
     "python-dotenv>=1",
+    # Penn Action ships its joint labels as MATLAB .mat files, which
+    # scipy.io.loadmat reads. Never declared until a workspace sync
+    # re-resolved the tree and removed it — it had been arriving as some
+    # other package's transitive dependency, which is not a dependency.
+    "scipy>=1.11",
+    # The nine-feature classifier in pose_probe/learn.py, which scored AUROC
+    # 0.42 — worse than chance. Kept so the negative result stays runnable.
+    "scikit-learn>=1.4",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# The applications live in this repo until their interface with the engine
+# has stopped changing (spec 8.1). A workspace lets them depend on the local
+# engine without a release, and splitting one out later is a folder move plus
+# deleting its [tool.uv.sources] block.
+[tool.uv.workspace]
+members = ["apps/*"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/saccade"]

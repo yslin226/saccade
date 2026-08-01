@@ -130,10 +130,13 @@ is the refereeing and the tool choice. Details and per-item results are in
 ## Development
 
 ```bash
-uv sync --all-extras --dev
+uv sync --all-packages --all-extras --dev
 uv run pytest
-uv run mypy src
+uv run mypy src apps/sandlot-baseball/src
 ```
+
+`--all-packages` is not optional: this is a uv workspace, and without it the
+applications under `apps/` are left uninstalled along with their detectors.
 
 Two rules are enforced by `tests/test_architecture.py` rather than by review:
 the engine may not import domain packages, and the pure logic modules may not

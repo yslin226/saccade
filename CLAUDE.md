@@ -82,14 +82,17 @@ def investigate(self, image, question, *, expect=None) -> InvestigationResult: .
 ## 常用指令
 
 ```bash
-uv sync --all-extras --dev      # 同步環境
-uv run pytest                   # 測試
-uv run ruff check src tests     # lint
-uv run ruff format .            # format
-uv run mypy src                 # 型別檢查
-uv build                        # 建置
+uv sync --all-packages --all-extras --dev   # 同步環境（--all-packages 才會裝 apps/）
+uv run pytest                               # 測試（含 apps/ 的測試）
+uv run ruff check src tests benchmarks apps # lint
+uv run ruff format .                        # format
+uv run mypy src apps/sandlot-baseball/src   # 型別檢查
+uv build                                    # 建置
 uv run pre-commit run --all-files
 ```
+
+`--all-packages` 不是選配。這是 uv workspace，少了它 `apps/` 底下的應用不會被安裝，
+連帶 MediaPipe 與 YOLO 也不會 —— 而測試會照樣通過，因為那些測試根本沒被收集到。
 
 ---
 

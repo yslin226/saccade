@@ -187,6 +187,8 @@ Port 介面照 Postgres 的形狀設計,即使 M3 的實作是 JSON 檔。
 `infrastructure/persistence/json_repo.py`
 - 實作 `SessionRepoPort`,一個 session 一個 JSON 檔
 - 存版本字串與影片雜湊 —— 版本變動會改變結果,不記就無法解釋差異
+- 存放位置由建構參數決定,CLI 以 `--data-dir` 傳入,預設 `~/.sandlot/sessions/`。
+  測試一律傳 `tmp_path`,所以測試不可能寫進真實家目錄 —— 與 `FileCache` 同一慣例
 
 `infrastructure/saccade_tools.py`
 - 把 MediaPipe/YOLO 包成 `saccade.Tool`,經 `register_tool()` 注入

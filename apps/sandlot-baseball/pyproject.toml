@@ -1,0 +1,43 @@
+[project]
+name = "sandlot-baseball"
+version = "0.1.0"
+description = "Baseball movement analysis — consistency first, judgement later"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "yslin226", email = "yslin226@gmail.com" },
+]
+dependencies = [
+    "saccade-vision",
+    # Pinned, not floated. M3's acceptance condition is that ten analyses of
+    # one video agree exactly, and the measurement that showed it possible
+    # was made against these versions. A detector upgrade may shift
+    # coordinates in the last decimal place, which is invisible in a
+    # changelog and fatal to "you changed by 4.8 degrees since last session".
+    #
+    # Upgrading is allowed. Upgrading without re-running the determinism
+    # probe, and without invalidating stored sessions, is not — every
+    # session records the versions that produced it for exactly this reason.
+    "mediapipe==1.0.0",
+    "ultralytics==8.4.113",
+    "opencv-python>=4.10",
+    "pydantic>=2",
+    "numpy>=1.26",
+]
+
+[project.scripts]
+sandlot = "sandlot.interfaces.cli:main"
+
+# Points at the engine in this workspace rather than at PyPI. Deleting this
+# block is the whole of what splitting this app into its own repo requires
+# (spec 8.1) — the dependency then resolves to a released version.
+[tool.uv.sources]
+saccade-vision = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sandlot"]
