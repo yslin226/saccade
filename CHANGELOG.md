@@ -39,6 +39,36 @@ recorded.
 
 ### Added
 
+- **Three geometric primitives, for applications to build domain tools from.**
+  Pure arithmetic on coordinates, with no domain knowledge: an angle is an
+  angle whether the vertex is an elbow, a robot joint, or a road junction.
+
+  - `angle_between(a, vertex, b)` — the angle at `vertex`, in degrees, in
+    [0, 180]. Unsigned. The vertex is the middle argument, matching how the
+    angle is written; passing it first measures something else and returns a
+    plausible number.
+  - `speed(p1, p2, dt)` — distance over elapsed time, in whatever units the
+    caller passed in. Named `speed` rather than `velocity` because it is an
+    unsigned scalar, and the other name would imply a direction it does not
+    carry.
+  - `centroid(points)` — the arithmetic mean. The centre of mass only when
+    the points are equally weighted, which body segments are not.
+
+  Each raises rather than returning a plausible number on degenerate input:
+  a ray of zero length has no direction, zero elapsed time makes a speed
+  infinite rather than large, and the mean of nothing is not a position.
+  Returning `0.0`, `inf` or the origin would each survive a comparison
+  against a threshold and quietly answer the wrong question.
+
+### Known issues
+
+- `saccade.geometry` refuses to import without OpenCV, but nothing in the
+  engine actually uses it — the import exists only as an availability check.
+  Callers who want `distance` or `angle_between`, which are `math` and
+  nothing else, are made to download 60MB for a dependency that is never
+  called. The gate should move to whichever module first needs contour
+  finding.
+
 - **`ActiveVisionAgent(..., choose_tools=True)` — the model picks which tools
   to run.** Off by default. The loop otherwise runs every registered tool on
   every step, which is right only while every tool was written for the

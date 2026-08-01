@@ -15,10 +15,13 @@ import math
 __all__ = [
     "Point",
     "Segment",
+    "angle_between",
+    "centroid",
     "circles_overlap",
     "count_line_intersections",
     "distance",
     "segments_intersect",
+    "speed",
 ]
 
 Point = tuple[float, float]
@@ -32,6 +35,82 @@ EPSILON = 1e-9
 def distance(p1: Point, p2: Point) -> float:
     """Euclidean distance between two points."""
     return math.hypot(p2[0] - p1[0], p2[1] - p1[1])
+
+
+def angle_between(a: Point, vertex: Point, b: Point) -> float:
+    """The angle ``a-vertex-b`` in degrees, in [0, 180].
+
+    Note the argument order: the vertex is in the middle, matching how the
+    angle is written. Passing the vertex first measures a different angle and
+    returns a plausible number, so the order is not a detail.
+
+    The result is unsigned. Two rays 30° apart give 30° whichever side they
+    are on — a caller that needs a direction needs more than one angle.
+
+    Args:
+        a: A point on the first ray.
+        vertex: Where the rays meet.
+        b: A point on the second ray.
+
+    Raises:
+        ValueError: If either point coincides with the vertex. A zero-length
+            ray has no direction, and the angle is undefined rather than 0.
+    """
+    ax, ay = a[0] - vertex[0], a[1] - vertex[1]
+    bx, by = b[0] - vertex[0], b[1] - vertex[1]
+
+    len_a = math.hypot(ax, ay)
+    len_b = math.hypot(bx, by)
+    if len_a <= EPSILON or len_b <= EPSILON:
+        raise ValueError(f"a point coincides with the vertex {vertex}, so no angle exists")
+
+    # Clamped because rounding can push the quotient just outside [-1, 1] on
+    # collinear inputs, and math.acos raises there.
+    cosine = min(1.0, max(-1.0, (ax * bx + ay * by) / (len_a * len_b)))
+    return math.degrees(math.acos(cosine))
+
+
+def speed(p1: Point, p2: Point, dt: float) -> float:
+    """Distance covered per unit time, in the units the caller passes in.
+
+    Unsigned, like :func:`distance` — this is speed, not velocity. Nothing
+    here knows whether the coordinates are pixels or metres, so the result
+    carries whatever units went in; naming them is the caller's job, and
+    rule 8 says the number must reach the reader with them attached.
+
+    Args:
+        p1: Where the point was.
+        p2: Where it is now.
+        dt: Elapsed time. Must be positive.
+
+    Raises:
+        ValueError: If ``dt`` is not positive. Zero elapsed time makes the
+            speed infinite rather than large, and returning ``inf`` would let
+            it propagate into a comparison that silently succeeds.
+    """
+    if dt <= 0:
+        raise ValueError(f"dt must be positive, got {dt}")
+    return distance(p1, p2) / dt
+
+
+def centroid(points: list[Point]) -> Point:
+    """The arithmetic mean of the points.
+
+    This is the centre of the *points*, which is the centre of mass only when
+    they are equally weighted. For anything where mass is distributed unevenly
+    — body segments, for one — weight the points before calling.
+
+    Raises:
+        ValueError: If ``points`` is empty. The mean of nothing is not a
+            position, and returning the origin would be a coordinate a caller
+            could plot.
+    """
+    if not points:
+        raise ValueError("centroid of an empty list is undefined")
+    return (
+        math.fsum(x for x, _ in points) / len(points),
+        math.fsum(y for _, y in points) / len(points),
+    )
 
 
 def circles_overlap(
