@@ -69,6 +69,26 @@ plus a toolbox it has to navigate beats it on both.
 It picked the applicable tool alone on 28 of 30 circle items and 30 of 30
 line items, with no fallbacks. Two of the decoys were never chosen at all.
 
+### Choosing does not degrade with the size of the toolbox
+
+Five tools is a pair with distractors, not a toolbox. An application registers
+a dozen or more, so the catalogue was padded with plausible instruments for
+questions nobody asked — edge density, stroke width, convexity — and the
+choice measured again at each size.
+
+| toolbox | Touching Circles | Line Intersections | fallbacks |
+|---|---|---|---|
+| 5 tools | 18/20 | 20/20 | 0 |
+| 10 tools | **20/20** | 20/20 | 0 |
+| 20 tools | **20/20** | 20/20 | 0 |
+
+80 choices, no fallbacks, and the two lapses are at the *smallest* size. Both
+took the applicable tool *and* the sharp decoy alongside it; at 10 and 20 that
+never happened. Why a bigger catalogue reads as easier is not something this
+measures — one reading is that a short list makes everything on it look
+relevant, while a long one forces the descriptions to actually be read. That
+is a hypothesis, not a finding.
+
 ### The gain runs inverse to the model
 
 Same tasks, one tool given rather than chosen, across four models:
