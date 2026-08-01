@@ -66,15 +66,21 @@ strict = true
 # No python_version pin: CI checks 3.11, 3.12 and 3.13, and mypy should
 # check against whichever interpreter it is actually running under.
 
-# opencv-python ships no type stubs. The import in geometry/__init__.py
-# exists only to detect whether the extra is installed.
+# Vision packages that ship no type stubs. cv2 is imported by the engine
+# only to detect whether the geometry extra is installed; mediapipe and
+# ultralytics are used by the application and the benchmarks, which rule 2
+# keeps out of the engine entirely.
 [[tool.mypy.overrides]]
-module = ["cv2.*", "cv2"]
+module = ["cv2.*", "cv2", "mediapipe.*", "mediapipe", "ultralytics.*", "ultralytics"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+# The apps are workspace members with their own test suites. Listing them
+# here means `uv run pytest` at the root is the whole build — an acceptance
+# condition that says "pytest is green" would otherwise be satisfied without
+# the application having been tested at all.
+testpaths = ["tests", "apps"]
 # benchmarks/ is not installed as a package — it ships with the repo, not
 # with saccade-vision — so the project root has to be importable for tests
 # that exercise the benchmark pipeline.
