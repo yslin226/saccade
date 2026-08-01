@@ -16,11 +16,15 @@ import pytest
 
 from saccade.geometry.shapes import (
     angle_between,
+    bbox_iou,
+    bearing,
     centroid,
     circles_overlap,
     count_line_intersections,
     distance,
+    point_to_segment_distance,
     segments_intersect,
+    smooth,
     speed,
 )
 
@@ -123,6 +127,146 @@ class TestSpeed:
     def test_negative_time_is_an_error(self) -> None:
         with pytest.raises(ValueError, match="dt must be positive"):
             speed((0, 0), (1, 1), -0.5)
+
+
+class TestBearing:
+    """Where something is, as opposed to how far apart two things are."""
+
+    def test_due_right_is_zero(self) -> None:
+        assert bearing((0, 0), (10, 0)) == pytest.approx(0.0)
+
+    def test_it_follows_the_pixel_grid_not_the_textbook(self) -> None:
+        """y grows downward in an image, so 90 degrees is down the screen.
+        The inputs are pixel coordinates; the convention follows them."""
+        assert bearing((0, 0), (0, 10)) == pytest.approx(90.0)
+
+    def test_due_left_is_180(self) -> None:
+        assert bearing((0, 0), (-10, 0)) == pytest.approx(180.0)
+
+    def test_it_wraps_rather_than_going_negative(self) -> None:
+        assert bearing((0, 0), (0, -10)) == pytest.approx(270.0)
+
+    def test_it_is_signed_unlike_angle_between(self) -> None:
+        """Mirror images give different bearings. That is the whole reason
+        this exists alongside angle_between, which cannot tell them apart."""
+        assert bearing((0, 0), (10, 10)) != pytest.approx(bearing((0, 0), (10, -10)))
+
+    def test_distance_does_not_change_the_bearing(self) -> None:
+        assert bearing((0, 0), (1, 1)) == pytest.approx(bearing((0, 0), (500, 500)))
+
+    def test_a_point_has_no_bearing_to_itself(self) -> None:
+        """0.0 would be indistinguishable from due right."""
+        with pytest.raises(ValueError, match="no bearing"):
+            bearing((3, 4), (3, 4))
+
+    def test_the_result_is_always_in_range(self) -> None:
+        for target in ((1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1)):
+            assert 0.0 <= bearing((0, 0), target) < 360.0
+
+
+class TestPointToSegmentDistance:
+    """To the segment, not to the infinite line through it."""
+
+    def test_a_point_beside_the_middle(self) -> None:
+        assert point_to_segment_distance((5, 3), ((0, 0), (10, 0))) == pytest.approx(3.0)
+
+    def test_a_point_on_the_segment_is_zero(self) -> None:
+        assert point_to_segment_distance((5, 0), ((0, 0), (10, 0))) == pytest.approx(0.0)
+
+    def test_a_point_past_the_end_measures_to_the_end(self) -> None:
+        """The distinction from the infinite line. A point at x=20 is 10 from
+        the segment's end, not 0 from the line it lies on."""
+        assert point_to_segment_distance((20, 0), ((0, 0), (10, 0))) == pytest.approx(10.0)
+
+    def test_a_point_past_the_start_measures_to_the_start(self) -> None:
+        assert point_to_segment_distance((-6, 8), ((0, 0), (10, 0))) == pytest.approx(10.0)
+
+    def test_the_endpoints_are_at_zero(self) -> None:
+        segment = ((2, 3), (8, 9))
+        assert point_to_segment_distance((2, 3), segment) == pytest.approx(0.0)
+        assert point_to_segment_distance((8, 9), segment) == pytest.approx(0.0)
+
+    def test_a_zero_length_segment_degenerates_to_a_point(self) -> None:
+        """Not an error: the shortest distance to a point is still defined."""
+        assert point_to_segment_distance((3, 4), ((0, 0), (0, 0))) == pytest.approx(5.0)
+
+    def test_a_diagonal_segment(self) -> None:
+        assert point_to_segment_distance((0, 10), ((0, 0), (10, 10))) == pytest.approx(
+            math.sqrt(50)
+        )
+
+
+class TestBBoxIoU:
+    def test_identical_boxes_score_one(self) -> None:
+        box = (10.0, 10.0, 20.0, 20.0)
+        assert bbox_iou(box, box) == pytest.approx(1.0)
+
+    def test_disjoint_boxes_score_zero(self) -> None:
+        assert bbox_iou((0, 0, 10, 10), (50, 50, 10, 10)) == 0.0
+
+    def test_half_overlap(self) -> None:
+        """Two 10x10 boxes sharing a 5x10 strip: 50 over 150."""
+        assert bbox_iou((0, 0, 10, 10), (5, 0, 10, 10)) == pytest.approx(50 / 150)
+
+    def test_touching_along_an_edge_scores_zero(self) -> None:
+        """A shared edge has no area, so there is no intersection."""
+        assert bbox_iou((0, 0, 10, 10), (10, 0, 10, 10)) == 0.0
+
+    def test_a_box_contained_in_another(self) -> None:
+        assert bbox_iou((0, 0, 10, 10), (2, 2, 4, 4)) == pytest.approx(16 / 100)
+
+    def test_it_is_symmetric(self) -> None:
+        a, b = (0.0, 0.0, 10.0, 10.0), (3.0, 4.0, 12.0, 6.0)
+        assert bbox_iou(a, b) == pytest.approx(bbox_iou(b, a))
+
+    def test_a_zero_area_box_is_an_error(self) -> None:
+        """The union would be the other box's area, making the ratio look
+        like a real answer when nothing was compared."""
+        with pytest.raises(ValueError, match="positive width and height"):
+            bbox_iou((0, 0, 0, 10), (0, 0, 10, 10))
+
+    def test_a_negative_dimension_is_an_error(self) -> None:
+        with pytest.raises(ValueError, match="positive width and height"):
+            bbox_iou((0, 0, 10, 10), (0, 0, 10, -5))
+
+
+class TestSmooth:
+    def test_a_flat_series_is_unchanged(self) -> None:
+        assert smooth([5.0, 5.0, 5.0, 5.0]) == pytest.approx([5.0, 5.0, 5.0, 5.0])
+
+    def test_a_spike_is_flattened(self) -> None:
+        spiky = [1.0, 1.0, 9.0, 1.0, 1.0]
+        assert max(smooth(spiky)) < 9.0
+
+    def test_the_output_is_the_same_length(self) -> None:
+        """So the index stays a frame number."""
+        for n in (1, 2, 5, 17):
+            assert len(smooth([float(i) for i in range(n)])) == n
+
+    def test_the_ends_average_only_what_exists(self) -> None:
+        """Truncated, not padded — the series never invents data outside its
+        own range."""
+        assert smooth([0.0, 3.0, 6.0], window=3)[0] == pytest.approx(1.5)
+
+    def test_a_window_of_one_changes_nothing(self) -> None:
+        values = [3.0, 1.0, 4.0, 1.0]
+        assert smooth(values, window=1) == pytest.approx(values)
+
+    def test_an_even_window_is_widened_rather_than_shifted(self) -> None:
+        """A half-frame shift would misalign the result against its own
+        timestamps, so window=4 behaves as 5."""
+        values = [1.0, 2.0, 3.0, 4.0, 5.0]
+        assert smooth(values, window=4) == pytest.approx(smooth(values, window=5))
+
+    def test_an_empty_series_stays_empty(self) -> None:
+        assert smooth([]) == []
+
+    def test_a_window_wider_than_the_series_averages_everything(self) -> None:
+        assert smooth([1.0, 2.0, 3.0], window=99) == pytest.approx([2.0, 2.0, 2.0])
+
+    def test_a_zero_window_is_an_error(self) -> None:
+        with pytest.raises(ValueError, match="window must be at least 1"):
+            smooth([1.0, 2.0], window=0)
 
 
 class TestCentroid:

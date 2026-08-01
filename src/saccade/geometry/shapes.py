@@ -13,19 +13,30 @@ from __future__ import annotations
 import math
 
 __all__ = [
+    "BBox",
     "Point",
     "Segment",
     "angle_between",
+    "bbox_iou",
+    "bearing",
     "centroid",
     "circles_overlap",
     "count_line_intersections",
     "distance",
+    "point_to_segment_distance",
     "segments_intersect",
+    "smooth",
     "speed",
 ]
 
 Point = tuple[float, float]
 Segment = tuple[Point, Point]
+
+# A rectangle as (x, y, width, height), matching saccade.models.BBox and
+# PIL's convention that x/y is the top-left corner. Kept as a plain tuple so
+# this module stays free of the pydantic models — it is arithmetic, and the
+# caller may not have a BBox instance to hand.
+BBox = tuple[float, float, float, float]
 
 # Coordinates come from pixel measurements, so exact float equality is the
 # wrong test for "touching". This tolerance is what "just touching" means.
@@ -91,6 +102,111 @@ def speed(p1: Point, p2: Point, dt: float) -> float:
     if dt <= 0:
         raise ValueError(f"dt must be positive, got {dt}")
     return distance(p1, p2) / dt
+
+
+def bearing(origin: Point, target: Point) -> float:
+    """The direction from ``origin`` to ``target``, in degrees, in [0, 360).
+
+    Signed, unlike :func:`angle_between` — this is where something *is*, not
+    how far two things are apart. Zero points along +x and the angle increases
+    towards +y, so in image coordinates, where y grows downward, 90° is down
+    the screen rather than up it. That follows the pixel grid rather than the
+    convention of a maths textbook, because the inputs are pixel coordinates.
+
+    Raises:
+        ValueError: If the points coincide. There is no direction from a
+            point to itself, and returning 0.0 would be indistinguishable
+            from "due right".
+    """
+    dx, dy = target[0] - origin[0], target[1] - origin[1]
+    if math.hypot(dx, dy) <= EPSILON:
+        raise ValueError(f"no bearing from {origin} to itself")
+    return math.degrees(math.atan2(dy, dx)) % 360.0
+
+
+def point_to_segment_distance(point: Point, segment: Segment) -> float:
+    """Shortest distance from a point to a line *segment*.
+
+    To the segment, not to the infinite line through it: a point beyond one
+    end measures to that end, which is what "how far off the path is it"
+    means. The infinite-line distance would report a smaller number for a
+    point nowhere near the segment at all.
+
+    A zero-length segment is not an error — it degenerates to the distance
+    between two points, which is still the shortest distance to it.
+    """
+    (ax, ay), (bx, by) = segment
+    px, py = point
+
+    dx, dy = bx - ax, by - ay
+    length_squared = dx * dx + dy * dy
+    if length_squared <= EPSILON:
+        return distance(point, segment[0])
+
+    # Project onto the segment, clamped to its ends. Without the clamp this
+    # measures to the infinite line and understates the distance for points
+    # past either end.
+    t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length_squared))
+    return distance(point, (ax + t * dx, ay + t * dy))
+
+
+def bbox_iou(a: BBox, b: BBox) -> float:
+    """Intersection over union of two boxes, in [0, 1].
+
+    The standard agreement measure between two detections. 0 means disjoint,
+    1 means identical; boxes that merely touch along an edge score 0, since
+    a shared edge has no area.
+
+    Boxes are ``(x, y, width, height)`` with ``x``/``y`` at the top-left,
+    matching :class:`saccade.models.BBox` and PIL.
+
+    Raises:
+        ValueError: If either box has a non-positive dimension. A box with no
+            area makes the union zero, and the ratio undefined rather than 0.
+    """
+    for name, box in (("a", a), ("b", b)):
+        if box[2] <= 0 or box[3] <= 0:
+            raise ValueError(f"box {name} must have positive width and height, got {box}")
+
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+
+    overlap_w = min(ax + aw, bx + bw) - max(ax, bx)
+    overlap_h = min(ay + ah, by + bh) - max(ay, by)
+    if overlap_w <= 0 or overlap_h <= 0:
+        return 0.0
+
+    intersection = overlap_w * overlap_h
+    return intersection / (aw * ah + bw * bh - intersection)
+
+
+def smooth(values: list[float], window: int = 3) -> list[float]:
+    """Centred moving average, same length as the input.
+
+    For sequences measured frame by frame, where a single bad detection shows
+    up as a spike. Windows are truncated at the ends rather than padded: the
+    first value averages only what exists, so the series never invents data
+    outside its own range. That keeps the output aligned with the input,
+    which matters when the index is a frame number.
+
+    An even ``window`` cannot be centred exactly and is widened by one, so
+    ``window=4`` behaves as 5. The alternative is a half-frame shift, which
+    silently misaligns the result against its own timestamps.
+
+    Raises:
+        ValueError: If ``window`` is not positive.
+    """
+    if window < 1:
+        raise ValueError(f"window must be at least 1, got {window}")
+    if not values:
+        return []
+
+    half = window // 2
+    return [
+        math.fsum(values[max(0, i - half) : i + half + 1])
+        / len(values[max(0, i - half) : i + half + 1])
+        for i in range(len(values))
+    ]
 
 
 def centroid(points: list[Point]) -> Point:

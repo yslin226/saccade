@@ -19,25 +19,35 @@ except ImportError as exc:  # pragma: no cover - depends on install extras
     ) from exc
 
 from saccade.geometry.shapes import (
+    BBox,
     Point,
     Segment,
     angle_between,
+    bbox_iou,
+    bearing,
     centroid,
     circles_overlap,
     count_line_intersections,
     distance,
+    point_to_segment_distance,
     segments_intersect,
+    smooth,
     speed,
 )
 
 __all__ = [
+    "BBox",
     "Point",
     "Segment",
     "angle_between",
+    "bbox_iou",
+    "bearing",
     "centroid",
     "circles_overlap",
     "count_line_intersections",
     "distance",
+    "point_to_segment_distance",
     "segments_intersect",
+    "smooth",
     "speed",
 ]
