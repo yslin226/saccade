@@ -224,15 +224,17 @@ from pydantic import BaseModel
 from saccade import ActiveVisionAgent, Tool, ToolResult
 from saccade.geometry import angle_between
 
+
 class NoParams(BaseModel):
     """This tool measures the view it is handed."""
+
 
 def elbow_tool(joints) -> Tool:
     def run(image, viewport) -> ToolResult:
         degrees = angle_between(joints["shoulder"], joints["elbow"], joints["wrist"])
         return ToolResult(
             value={"method": "joint_angle", "extended": degrees > 160, "degrees": degrees},
-            is_measurement=True,   # only this may overrule the model
+            is_measurement=True,  # only this may overrule the model
             answer_key="extended",  # which key holds the verdict, vs. context
         )
 
@@ -243,11 +245,12 @@ def elbow_tool(joints) -> Tool:
         params_schema=NoParams,
     )
 
+
 agent = ActiveVisionAgent("openrouter:qwen/qwen3-vl-8b-instruct", choose_tools=True)
 agent.register_tool(elbow_tool(joints))
 
 result = agent.investigate(frame, "Is the elbow extended at release?")
-result.answer          # "Yes" — from the measurement, if it contradicted the model
+result.answer  # "Yes" — from the measurement, if it contradicted the model
 result.evidence_chain  # every look, every number, and why each was taken
 ```
 
