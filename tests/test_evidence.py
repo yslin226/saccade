@@ -22,6 +22,21 @@ def conflicted(text: str = "said 3, measured 2") -> Verification:
     return Verification(passed=False, method="measurement", computed={}, conflict=text)
 
 
+def overruling(
+    verdict: object, *, key: str = "touching", extra: dict[str, object] | None = None
+) -> Verification:
+    """A measurement that contradicted the model and named its verdict."""
+    computed: dict[str, object] = {key: verdict}
+    computed.update(extra or {})
+    return Verification(
+        passed=False,
+        method="geometry",
+        computed=computed,
+        conflict=f"model said otherwise; measured {key}={verdict}",
+        verdict_key=key,
+    )
+
+
 class TestAppending:
     def test_indices_are_assigned_in_order(self) -> None:
         chain = EvidenceChain()
@@ -145,6 +160,154 @@ class TestBestStatement:
         chain.add(action_name="look", viewport=view(), observation=Observation(statement="a"))
         chain.add(action_name="look", viewport=view(), observation=Observation(statement="b"))
         assert chain.best_statement() == "b"
+
+
+class TestAMeasurementOverrulesTheModel:
+    """Regression from a live run: the referee was being ignored.
+
+    On BlindTest's touching-circles task with Qwen3-VL-8B, a measurement
+    contradicted the model on 53 of 150 items. Those 53 scored 1.9%; the 97
+    nobody objected to scored 97.9%. The geometry had the right answer every
+    time and was never asked for it — detecting the conflict only lowered
+    confidence, and the model's wrong answer was still what came out.
+
+    Rule 1 of the project says measurement and interpretation are separate
+    and that numbers come from tools. A tool that can only lower confidence
+    is an adviser, not a referee.
+    """
+
+    def test_a_measured_verdict_replaces_the_statement(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes", self_confidence=0.95),
+            verification=overruling(False),
+        )
+        assert chain.best_statement() == "No"
+
+    def test_it_works_in_the_other_direction_too(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="No"),
+            verification=overruling(True),
+        )
+        assert chain.best_statement() == "Yes"
+
+    def test_a_numeric_verdict_is_reported_as_itself(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="I count 3 crossings"),
+            verification=overruling(2, key="crossings"),
+        )
+        assert chain.best_statement() == "2"
+
+    def test_diagnostic_figures_are_not_mistaken_for_the_verdict(self) -> None:
+        """A line counter reporting 1 crossing over 300 shared columns must
+        answer 1, not 300."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="they cross 4 times"),
+            verification=overruling(1, key="crossings", extra={"shared_columns": 300}),
+        )
+        assert chain.best_statement() == "1"
+
+    def test_the_model_still_wins_when_no_tool_claimed_an_answer(self) -> None:
+        """A conflict without a verdict_key means something disagreed but
+        nothing offered a replacement. Reporting a diagnostic as the answer
+        would be worse than reporting the model's."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+            verification=conflicted(),
+        )
+        assert chain.best_statement() == "Yes"
+
+    def test_an_agreeing_measurement_leaves_the_statement_alone(self) -> None:
+        """Overruling is for disagreement. When the tool confirms, the
+        model's own phrasing is the more informative answer."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes, they touch at one point"),
+            verification=passed(),
+        )
+        assert chain.best_statement() == "Yes, they touch at one point"
+
+    def test_a_cropped_measurement_cannot_overrule(self) -> None:
+        """The same reason a cropped *statement* cannot answer: a tool
+        measuring a magnified corner is answering about the corner. Letting
+        cropped measurements referee produced 305 false conflicts once."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+        )
+        chain.add(
+            action_name="zoom",
+            viewport=view(x=10, y=10, w=20, h=20),
+            observation=Observation(statement="Yes"),
+            verification=overruling(False),
+        )
+        assert chain.best_statement() == "Yes"
+
+    def test_the_latest_overruling_wins(self) -> None:
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+            verification=overruling(False, key="crossings"),
+        )
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+            verification=overruling(7, key="crossings"),
+        )
+        assert chain.best_statement() == "7"
+
+    def test_an_overruling_beats_an_earlier_verified_statement(self) -> None:
+        """Both are measurements. The later one looked at the same whole
+        image with more of the chain behind it."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="ambiguous but probably yes"),
+            verification=passed(),
+        )
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+            verification=overruling(False),
+        )
+        assert chain.best_statement() == "No"
+
+    def test_the_conflict_stays_in_the_chain(self) -> None:
+        """Rule 8: the overruling must be auditable, not silent."""
+        chain = EvidenceChain()
+        chain.add(
+            action_name="look",
+            viewport=view(),
+            observation=Observation(statement="Yes"),
+            verification=overruling(False),
+        )
+        assert len(chain.conflicts) == 1
+        assert chain.conflicts[0].observation.statement == "Yes"
+        assert chain.conflicts[0].verification is not None
+        assert chain.conflicts[0].verification.computed["touching"] is False
 
 
 class TestPartialViewsCannotAnswerWholeImageQuestions:

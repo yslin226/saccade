@@ -11,7 +11,8 @@ import pytest
 from PIL import Image
 
 from saccade import VLMResponse
-from saccade.vlm import FileCache, MemoryCache, make_cache_key
+from saccade.ports import CachePort
+from saccade.vlm import FileCache, MemoryCache, NullCache, make_cache_key
 from saccade.vlm._cache import DEFAULT_CACHE_DIR
 
 
@@ -156,3 +157,29 @@ class TestMemoryCache:
         cache.set("a", VLMResponse(text="1"))
         cache.set("b", VLMResponse(text="2"))
         assert len(cache) == 2
+
+
+class TestNullCache:
+    """For runs where the model's behaviour is the thing being measured.
+
+    A cache silently turns a re-run into a replay: change how the loop works
+    and it still receives the answers the *old* loop provoked, so the run
+    looks like a fresh measurement while measuring nothing new.
+    """
+
+    def test_it_never_returns_what_was_stored(self) -> None:
+        cache = NullCache()
+        cache.set("k", VLMResponse(text="cached"))
+        assert cache.get("k") is None
+
+    def test_set_does_not_raise(self) -> None:
+        """It has to be a drop-in for the real thing, silently."""
+        NullCache().set("k", VLMResponse(text="x"))
+
+    def test_it_is_always_empty(self) -> None:
+        cache = NullCache()
+        cache.set("a", VLMResponse(text="1"))
+        assert len(cache) == 0
+
+    def test_it_satisfies_the_port(self) -> None:
+        assert isinstance(NullCache(), CachePort)

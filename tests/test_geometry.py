@@ -15,10 +15,13 @@ import textwrap
 import pytest
 
 from saccade.geometry.shapes import (
+    angle_between,
+    centroid,
     circles_overlap,
     count_line_intersections,
     distance,
     segments_intersect,
+    speed,
 )
 
 
@@ -37,6 +40,115 @@ class TestDistance:
 
     def test_floats(self) -> None:
         assert distance((0.0, 0.0), (1.0, 1.0)) == pytest.approx(math.sqrt(2))
+
+
+class TestAngleBetween:
+    """Three points, angle at the middle one.
+
+    Written for joint angles — elbow, knee, shoulder — but nothing here knows
+    that. It is three coordinates.
+    """
+
+    def test_a_right_angle(self) -> None:
+        assert angle_between((1, 0), (0, 0), (0, 1)) == pytest.approx(90.0)
+
+    def test_a_straight_limb_is_180_not_0(self) -> None:
+        """A fully extended arm reads 180°, which is the convention every
+        biomechanics text uses and the opposite of the flexion angle."""
+        assert angle_between((-1, 0), (0, 0), (1, 0)) == pytest.approx(180.0)
+
+    def test_rays_along_the_same_direction_give_zero(self) -> None:
+        assert angle_between((1, 0), (0, 0), (5, 0)) == pytest.approx(0.0)
+
+    def test_it_is_unsigned(self) -> None:
+        """Mirror images give the same angle: this measures separation, not
+        direction. A caller needing handedness needs more than one angle."""
+        above = angle_between((1, 0), (0, 0), (0, 1))
+        below = angle_between((1, 0), (0, 0), (0, -1))
+        assert above == pytest.approx(below)
+
+    def test_distance_from_the_vertex_does_not_matter(self) -> None:
+        """Only direction counts, so a subject filmed closer reads the same."""
+        near = angle_between((1, 0), (0, 0), (0, 1))
+        far = angle_between((100, 0), (0, 0), (0, 300))
+        assert near == pytest.approx(far)
+
+    def test_the_vertex_is_the_middle_argument(self) -> None:
+        """Passing the vertex first measures a different angle and returns a
+        plausible number, so the order is not a detail."""
+        correct = angle_between((1, 0), (0, 0), (0, 1))
+        swapped = angle_between((0, 0), (1, 0), (0, 1))
+        assert correct != pytest.approx(swapped)
+
+    def test_it_never_exceeds_180(self) -> None:
+        for point in ((1, 1), (-1, 1), (-1, -1), (1, -1), (0, -5)):
+            assert 0.0 <= angle_between((1, 0), (0, 0), point) <= 180.0
+
+    def test_a_point_on_the_vertex_is_an_error(self) -> None:
+        """A zero-length ray has no direction. Returning 0.0 would be a
+        number a caller could compare against a threshold."""
+        with pytest.raises(ValueError, match="coincides with the vertex"):
+            angle_between((0, 0), (0, 0), (1, 1))
+
+    def test_the_other_point_on_the_vertex_is_also_an_error(self) -> None:
+        with pytest.raises(ValueError, match="coincides with the vertex"):
+            angle_between((1, 1), (0, 0), (0, 0))
+
+    def test_near_collinear_input_does_not_blow_up(self) -> None:
+        """Rounding can push the cosine just past 1.0, where acos raises."""
+        assert angle_between((1e8, 0), (0, 0), (1e8, 1e-8)) == pytest.approx(0.0, abs=1e-4)
+
+
+class TestSpeed:
+    def test_normal_case(self) -> None:
+        assert speed((0, 0), (3, 4), 2.0) == pytest.approx(2.5)
+
+    def test_no_movement_is_zero(self) -> None:
+        assert speed((5, 5), (5, 5), 1.0) == 0.0
+
+    def test_it_is_unsigned(self) -> None:
+        """Speed, not velocity — reversing the direction changes nothing."""
+        assert speed((0, 0), (10, 0), 1.0) == pytest.approx(speed((10, 0), (0, 0), 1.0))
+
+    def test_units_come_from_the_caller(self) -> None:
+        """Nothing here knows whether these are pixels or metres."""
+        assert speed((0, 0), (100, 0), 0.04) == pytest.approx(2500.0)
+
+    def test_zero_elapsed_time_is_an_error(self) -> None:
+        """Infinite rather than large. Returning inf would propagate into a
+        comparison that silently succeeds."""
+        with pytest.raises(ValueError, match="dt must be positive"):
+            speed((0, 0), (1, 1), 0.0)
+
+    def test_negative_time_is_an_error(self) -> None:
+        with pytest.raises(ValueError, match="dt must be positive"):
+            speed((0, 0), (1, 1), -0.5)
+
+
+class TestCentroid:
+    def test_normal_case(self) -> None:
+        assert centroid([(0, 0), (2, 0), (1, 3)]) == pytest.approx((1.0, 1.0))
+
+    def test_one_point_is_itself(self) -> None:
+        assert centroid([(4, 7)]) == pytest.approx((4.0, 7.0))
+
+    def test_two_points_give_the_midpoint(self) -> None:
+        assert centroid([(0, 0), (10, 20)]) == pytest.approx((5.0, 10.0))
+
+    def test_negative_coordinates(self) -> None:
+        assert centroid([(-2, -2), (2, 2)]) == pytest.approx((0.0, 0.0))
+
+    def test_duplicates_are_weighted(self) -> None:
+        """It is the mean of the points given, not of the distinct positions.
+        A caller listing a point twice has doubled its weight, deliberately
+        or otherwise."""
+        assert centroid([(0, 0), (0, 0), (3, 0)]) == pytest.approx((1.0, 0.0))
+
+    def test_an_empty_list_is_an_error(self) -> None:
+        """The mean of nothing is not a position, and the origin is a
+        coordinate a caller could plot."""
+        with pytest.raises(ValueError, match="empty list"):
+            centroid([])
 
 
 class TestCirclesOverlap:

@@ -218,6 +218,84 @@ class TestAnswerKeyLimitsWhatIsJudged:
         assert verify(said("No"), [result]).passed is False
 
 
+class TestABareVerdictCannotAnswerTwoQuestions:
+    """Regression from a mixed toolbox.
+
+    A bare "No" names no subject. Checked against one boolean measurement
+    that is unambiguous; checked against two, it is being read as a claim
+    about both, and it cannot be — the second tool is answering a different
+    question.
+
+    Found on BlindTest's circles task once decoy tools were added. A decoy
+    reporting that two *bounding boxes* overlap contradicted a correct "No"
+    about the *circles*: both statements were true, about different things.
+    Items where a tool spoke scored 86.0%, against 98.2% where none did, and
+    every failure ran the same way — truth No, answer Yes.
+    """
+
+    def test_a_bare_verdict_is_not_judged_by_a_second_measurement(self) -> None:
+        circles = ToolResult(value={"overlap": False}, is_measurement=True, answer_key="overlap")
+        boxes = ToolResult(
+            value={"boxes_overlap": True}, is_measurement=True, answer_key="boxes_overlap"
+        )
+        assert verify(said("No"), [circles, boxes]).passed is True
+
+    def test_measurements_that_concur_still_judge_a_bare_verdict(self) -> None:
+        """Silencing the wrong tool must not silence the right one. When both
+        report the same verdict there is no ambiguity about what "No"
+        contradicts, whatever each was measuring."""
+        circles = ToolResult(value={"overlap": True}, is_measurement=True, answer_key="overlap")
+        boxes = ToolResult(
+            value={"boxes_overlap": True}, is_measurement=True, answer_key="boxes_overlap"
+        )
+        verification = verify(said("No"), [circles, boxes])
+        assert verification.passed is False
+        assert verification.verdict_key in {"overlap", "boxes_overlap"}
+
+    def test_a_correct_answer_survives_a_contradicting_decoy(self) -> None:
+        """The case that cost 12 percentage points. The model is right, the
+        applicable tool agrees, and a decoy measuring something else says the
+        opposite — the answer must stand."""
+        circles = ToolResult(value={"overlap": False}, is_measurement=True, answer_key="overlap")
+        decoy = ToolResult(
+            value={"boxes_overlap": True}, is_measurement=True, answer_key="boxes_overlap"
+        )
+        assert verify(said("No"), [circles, decoy]).passed is True
+
+    def test_naming_the_subject_restores_the_judgement(self) -> None:
+        """The rule is about ambiguity, not about the second tool. A
+        statement that says which thing it means can be checked against it."""
+        boxes = ToolResult(
+            value={"boxes_overlap": True}, is_measurement=True, answer_key="boxes_overlap"
+        )
+        circles = ToolResult(value={"overlap": False}, is_measurement=True, answer_key="overlap")
+        verification = verify(said("No, the boxes do not overlap"), [boxes, circles])
+        assert verification.passed is False
+        assert verification.verdict_key == "boxes_overlap"
+
+    def test_one_measurement_still_judges_a_bare_verdict(self) -> None:
+        """With a single tool there is no ambiguity about what "No" answers,
+        and this is the common case — a benchmark asks for a bare Yes/No."""
+        only = ToolResult(value={"overlap": True}, is_measurement=True, answer_key="overlap")
+        assert verify(said("No"), [only]).passed is False
+
+    def test_agreement_across_two_tools_still_passes(self) -> None:
+        first = ToolResult(value={"overlap": True}, is_measurement=True, answer_key="overlap")
+        second = ToolResult(
+            value={"boxes_overlap": True}, is_measurement=True, answer_key="boxes_overlap"
+        )
+        assert verify(said("Yes"), [first, second]).passed is True
+
+    def test_numbers_are_unaffected(self) -> None:
+        """A count carries its own subject — "3" against a measured 5 is a
+        disagreement whatever else is in the toolbox."""
+        crossings = ToolResult(value={"crossings": 5}, is_measurement=True, answer_key="crossings")
+        coverage = ToolResult(
+            value={"coverage_percent": 12.0}, is_measurement=True, answer_key="coverage_percent"
+        )
+        assert verify(said("{3}"), [crossings, coverage]).passed is False
+
+
 class TestNoFalseConflicts:
     """A conflict that is not real costs more than a missed one."""
 

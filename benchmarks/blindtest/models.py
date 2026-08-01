@@ -18,10 +18,15 @@ __all__ = ["PROVIDER_RPM", "build_vlm", "default_rpm"]
 # Requests per minute to assume when the caller does not say. Gemini's free
 # tier is the measured 20/min; Azure depends on the deployment's quota, so
 # the default is conservative rather than optimistic.
+#
+# OpenRouter's limit is per-account credit balance rather than per-model, and
+# a paid account is documented at far more than this. The number here is a
+# floor chosen so a run does not fail on a fresh account.
 PROVIDER_RPM = {
     "google": 20,
     "azure": 60,
     "openai": 60,
+    "openrouter": 60,
 }
 
 
@@ -30,12 +35,20 @@ def build_vlm(model: str) -> VLMPort:
 
     Args:
         model: Either a Pydantic AI model string with a provider prefix
-            (``"google:gemini-flash-latest"``), or ``"azure:<deployment>"``
-            for an Azure OpenAI deployment.
+            (``"google:gemini-flash-latest"``,
+            ``"openrouter:qwen/qwen3-vl-8b-instruct"``), or
+            ``"azure:<deployment>"`` for an Azure OpenAI deployment.
 
             Azure names a *deployment*, not a model — the name is whatever
             was chosen when the deployment was created, which is why it
             cannot be inferred.
+
+            OpenRouter is how open-weight models reach this benchmark. Azure
+            OpenAI serves only OpenAI's own models, and the open-weight
+            catalogue lives on a separate Azure resource type this project
+            has no access to. The comparison that matters — a small open
+            model plus measurement tools against a frontier model alone —
+            needs both ends reachable from one code path.
 
     Raises:
         RuntimeError: If Azure is requested without the required environment

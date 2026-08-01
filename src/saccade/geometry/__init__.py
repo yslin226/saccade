@@ -21,17 +21,23 @@ except ImportError as exc:  # pragma: no cover - depends on install extras
 from saccade.geometry.shapes import (
     Point,
     Segment,
+    angle_between,
+    centroid,
     circles_overlap,
     count_line_intersections,
     distance,
     segments_intersect,
+    speed,
 )
 
 __all__ = [
     "Point",
     "Segment",
+    "angle_between",
+    "centroid",
     "circles_overlap",
     "count_line_intersections",
     "distance",
     "segments_intersect",
+    "speed",
 ]
