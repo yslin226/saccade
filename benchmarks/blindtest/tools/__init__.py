@@ -9,6 +9,14 @@ door the architecture provides.
 from __future__ import annotations
 
 from benchmarks.blindtest.tools.circles import circle_tool, detect_circles
+from benchmarks.blindtest.tools.decoys import DECOY_NAMES, decoy_tools
 from benchmarks.blindtest.tools.lines import line_tool, trace_curves
 
-__all__ = ["circle_tool", "detect_circles", "line_tool", "trace_curves"]
+__all__ = [
+    "DECOY_NAMES",
+    "circle_tool",
+    "decoy_tools",
+    "detect_circles",
+    "line_tool",
+    "trace_curves",
+]

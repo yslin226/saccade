@@ -60,6 +60,24 @@ recorded.
   Returning `0.0`, `inf` or the origin would each survive a comparison
   against a threshold and quietly answer the wrong question.
 
+- **Decoy tools in the benchmark** (`benchmarks/blindtest/tools/decoys.py`),
+  so the toolbox holds instruments for questions nobody asked. The real tools
+  were each written for one task and solve exactly it, which flatters the
+  design: running everything unconditionally reaches 98% because everything
+  applies.
+
+  A decoy that cannot mislead tests nothing, so each was measured against
+  ground truth before being kept. `bounding_box_overlap` judges two shapes
+  touching by the aspect ratio of their bounding box — real arithmetic, and
+  correct for two equal circles, but the boundary moves with the radii and a
+  fixed constant cannot follow it. Over 60 real items it contradicts the
+  truth on 70%, always confidently.
+
+  With a correct tool alone, a model stating the true answer verified 40/40.
+  Add the decoy to the same step and 26 of those correct answers are
+  overruled. Choosing the right instrument is therefore a decision with a
+  cost, which is what the experiment needed and did not have.
+
 ### Known issues
 
 - `saccade.geometry` refuses to import without OpenCV, but nothing in the

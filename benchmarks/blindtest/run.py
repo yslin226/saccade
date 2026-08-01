@@ -38,7 +38,7 @@ from benchmarks.blindtest.dataset import (
 )
 from benchmarks.blindtest.models import build_vlm, default_rpm
 from benchmarks.blindtest.scoring import score
-from benchmarks.blindtest.tools import circle_tool, line_tool
+from benchmarks.blindtest.tools import circle_tool, decoy_tools, line_tool
 from saccade import ActiveVisionAgent, Tool, VLMError
 from saccade.ports import CachePort, VLMPort
 from saccade.vlm import FileCache, NullCache
@@ -299,12 +299,22 @@ def _toolbox_for(item: BlindTestItem) -> list[Tool]:
     thing when asked another — which is not merely a wasted call, since a
     measurement is what the verifier uses to overrule the model.
 
-    So both tools are offered on both tasks. The circle tool asked about
-    lines, or the line tool asked about circles, returns a number about
-    something nobody asked about. Whether the model can tell them apart is
-    the question ``saccade-choose`` exists to answer.
+    So both tools are offered on both tasks, plus three decoys that measure
+    something true about the image which does not answer the question — see
+    ``tools/decoys.py``. Five tools, one of them right.
+
+    The decoys are not padding. ``bounding_box_overlap`` reports True on
+    exactly the near-miss circles the task is built from, because two
+    bounding boxes meet well before two arcs do. A model that picks it gets a
+    real measurement, confidently wrong, which then overrules its own correct
+    answer. Whether the model can tell these apart is the question
+    ``saccade-choose`` exists to ask.
     """
-    return [circle_tool(tangent_counts="touching" in item.prompt), line_tool()]
+    return [
+        circle_tool(tangent_counts="touching" in item.prompt),
+        line_tool(),
+        *decoy_tools(),
+    ]
 
 
 def _report(progress: bool, index: int, total: int, outcome: ItemOutcome) -> None:
