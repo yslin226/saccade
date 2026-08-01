@@ -187,11 +187,30 @@ def _find_conflict(
     lowered = statement.lower()
     judged = {k: v for k, v in computed.items() if k in answer_keys} if answer_keys else computed
 
-    for key, value in judged.items():
-        if isinstance(value, bool):
-            conflict = _boolean_conflict(lowered, key, value)
-            if conflict:
-                return conflict, key
+    booleans = {k: v for k, v in judged.items() if isinstance(v, bool)}
+
+    # A bare "No" names no subject, so it can only be judged while the
+    # measurements agree on what the answer is. When they contradict each
+    # other, that statement cannot be a claim about both — the tools are
+    # answering different questions, and picking either verdict overrules an
+    # answer with a true measurement of something else.
+    #
+    # Found on BlindTest's circles task once decoy tools were added: a decoy
+    # reporting that two *bounding boxes* overlap contradicted a correct "No"
+    # about the *circles*. Both were true. Items where a tool spoke scored
+    # 86.0%, against 98.2% where none did, and every failure ran the same
+    # way — truth No, answer Yes.
+    #
+    # Agreement is the common case and stays judged, so a single tool, or
+    # several that concur, behave exactly as before. Only a statement naming
+    # its subject can be judged among measurements that disagree.
+    if len(set(booleans.values())) > 1 and _verdict(lowered) is not None:
+        booleans = {k: v for k, v in booleans.items() if _names_subject(lowered, k)}
+
+    for key, value in booleans.items():
+        conflict = _boolean_conflict(lowered, key, value)
+        if conflict:
+            return conflict, key
 
     for key, value in judged.items():
         if isinstance(value, bool) or not isinstance(value, int | float):
@@ -208,6 +227,18 @@ def _answer_keys(measurements: list[ToolResult]) -> set[str]:
     return {m.answer_key for m in measurements if m.answer_key is not None}
 
 
+def _names_subject(lowered: str, key: str) -> bool:
+    """Whether the statement mentions what ``key`` measures.
+
+    The head word only: ``boxes_overlap`` is about boxes, and a statement
+    that never says "boxes" is not talking about them however confidently it
+    says something else.
+    """
+    words = key.replace("_", " ").split()
+    head = words[0] if words else key
+    return head in lowered
+
+
 def _boolean_conflict(lowered: str, key: str, measured: bool) -> str | None:
     """Detect a claim that contradicts a measured true/false fact.
 
@@ -222,9 +253,7 @@ def _boolean_conflict(lowered: str, key: str, measured: bool) -> str | None:
     claimed = _verdict(lowered)
 
     if claimed is None:
-        subject_words = key.replace("_", " ").split()
-        head = subject_words[0] if subject_words else key
-        if head not in lowered:
+        if not _names_subject(lowered, key):
             return None
         claimed = not any(word in _NEGATIONS for word in _words(lowered))
 

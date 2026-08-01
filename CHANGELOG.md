@@ -37,6 +37,28 @@ recorded.
   for the same reason a cropped statement cannot answer a whole-image
   question.
 
+- **A bare verdict is no longer judged by measurements that contradict each
+  other.** "No" names no subject, so it cannot be a claim about two tools at
+  once — when they disagree, one of them is answering a different question,
+  and taking either verdict overrules an answer with a true measurement of
+  something else.
+
+  Found by putting decoy tools in the benchmark's toolbox. A decoy reporting
+  that two *bounding boxes* overlap contradicted a correct "No" about the
+  *circles*; both statements were true. On the circles task:
+
+  | | before | after |
+  |---|---|---|
+  | overall | 93.0% | **98.0%** |
+  | items where a tool spoke | 86.0% | **100.0%** |
+
+  37 conflicts, 37 correct. The two remaining failures had no tool speak at
+  all — the detector found no circles, which is a different problem.
+
+  Agreement stays judged, so a single tool, or several that concur, behave
+  exactly as before. Only a statement naming its subject can be judged among
+  measurements that disagree.
+
 ### Added
 
 - **Three geometric primitives, for applications to build domain tools from.**
