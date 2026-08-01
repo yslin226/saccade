@@ -11,4 +11,38 @@ two lines" belongs here; "load the video, detect, measure, save" does not.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from sandlot.domain.comparison import IncomparableSessionsError, changed, difference
+from sandlot.domain.kinematics import (
+    centre_of_mass,
+    elbow_valgus,
+    hip_shoulder_separation,
+    kinetic_chain_order,
+    stride_length,
+    torso_length,
+)
+from sandlot.domain.models import (
+    Frame,
+    JointReading,
+    Metric,
+    MetricDelta,
+    Session,
+    Toolchain,
+)
+
+__all__ = [
+    "Frame",
+    "IncomparableSessionsError",
+    "JointReading",
+    "Metric",
+    "MetricDelta",
+    "Session",
+    "Toolchain",
+    "centre_of_mass",
+    "changed",
+    "difference",
+    "elbow_valgus",
+    "hip_shoulder_separation",
+    "kinetic_chain_order",
+    "stride_length",
+    "torso_length",
+]

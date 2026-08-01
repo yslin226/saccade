@@ -98,12 +98,16 @@ class TestDependenciesPointInward:
             forbidden = imported_layers(path) - ALLOWED[layer] - {layer}
             assert not forbidden, f"{path.relative_to(SRC)} imports {sorted(forbidden)}"
 
-    def test_domain_imports_no_sibling_layer(self) -> None:
+    def test_domain_imports_no_other_layer(self) -> None:
         """Stated separately because it is the load-bearing one: a domain
         module that reaches for a use case has put a rule where the domain
-        tests cannot see it."""
+        tests cannot see it.
+
+        Importing within ``domain`` is not that — a package re-exporting its
+        own modules is how ``__init__`` works.
+        """
         for path in modules_in("domain"):
-            assert not imported_layers(path), path.relative_to(SRC)
+            assert imported_layers(path) <= {"domain"}, path.relative_to(SRC)
 
     def test_the_scan_would_catch_a_violation(self, tmp_path: Path) -> None:
         """A guard nobody has seen fail is not a guard."""
