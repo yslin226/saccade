@@ -1,6 +1,6 @@
 """Can a VLM say why two detectors disagree?
 
-Detector disagreement predicts which frames are wrong (AUROC 0.713), but not
+Detector disagreement predicts which frames are wrong (AUROC 0.638), but not
 what went wrong — and the causes need different handling:
 
     motion blur   the limb is there but smeared; discard and interpolate
@@ -23,8 +23,40 @@ produce one. It is whether the labels correspond to anything:
 The third is the sharpest. A model that reports blur on clean frames is
 pattern-matching the question, not reading the image.
 
+WHAT IT FOUND — 48 frames, gpt-5.4, 12 clips across 8 actions:
+
+    3. no invented problems      24/24 frames where the detectors agreed
+                                 were called CLEAR. Not one false alarm.
+
+       true pose error, measured against Penn Action's hand-labelled joints,
+       which the model never saw:
+
+           where it said CLEAR          0.964 body widths   (n=32)
+           where it named a fault       2.269               (n=7)
+
+       A 2.35x separation. It is not merely declining to invent problems; the
+       frames it flags are genuinely worse.
+
+    2. labels vary by action     but not in the direction expected. Every
+                                 BLUR came from situp, a slow action — where
+                                 the elbow is both occluded by the torso and
+                                 moving. Fast actions drew CLEAR and
+                                 UNREADABLE instead.
+
+    1. self-consistency 67%      32/48 gave the same answer twice. Weak: a
+                                 third of frames change verdict on a re-ask,
+                                 so a single question is not enough.
+
+The limit worth stating: Penn Action labels joint positions, not *why* a
+frame is hard. So this measures whether the VLM picks out the bad frames — it
+does — and cannot measure whether the reason it gives is the right one.
+
+UNREADABLE at 12/48 is a parsing failure, not a capability one: the reply did
+not contain any of the three words in a form the scorer recognised. Fixing
+the prompt would recover those frames.
+
 Usage:
-    uv run python -m benchmarks.pose_probe.explain --frames 20
+    uv run python -m benchmarks.pose_probe.explain --clips 3 --frames 12
 """
 
 from __future__ import annotations

@@ -193,12 +193,15 @@ def disagreement_tool(
     """Build a tool reporting whether two detectors agree about this frame.
 
     A measurement, not an opinion: it is arithmetic on two sets of coordinates.
-    Validated at AUROC 0.713 over 1320 held-out frames, which makes it the
-    first signal in this project that predicts pose error better than chance.
+    AUROC 0.638 over 890 held-out frames — better than chance and better than
+    any single-detector signal tried, but short of the 0.70 bar this module's
+    docstring fixed before the run.
 
     What it cannot say is which detector is wrong, or whether the cause is
     motion blur, occlusion or a lost track — those need different handling and
-    look identical in the numbers. That gap is the agent's to fill.
+    look identical in the numbers. A VLM can: shown the disputed region it
+    called 24/24 agreed frames clean, invented no problems, and the frames it
+    did flag carry 2.35x the true joint error. See ``explain.py``.
     """
 
     def run(image: Image, viewport: object) -> ToolResult:
