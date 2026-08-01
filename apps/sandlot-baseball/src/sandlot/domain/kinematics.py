@@ -27,6 +27,8 @@ from sandlot.domain.models import Frame
 
 __all__ = [
     "COM_WEIGHTS",
+    "MIN_ELBOW_DEGREES",
+    "MIN_SPAN_PX",
     "centre_of_mass",
     "elbow_valgus",
     "hip_shoulder_separation",
@@ -62,6 +64,26 @@ COM_WEIGHTS = {
 # into an apparent catastrophe — this project has seen it report a gap of 157
 # body widths, which is not a quantity that exists.
 MIN_SPAN_PX = 20.0
+
+# The tightest an elbow bends. Below this the arm is not very flexed — the
+# detector has misplaced a joint.
+#
+# Anatomy puts maximum active flexion around 145 degrees of travel from
+# straight, leaving roughly 30 to 35 degrees between the upper arm and the
+# forearm; a hand cannot be brought closer to the shoulder than the biceps
+# allows. 25 is a little below that, so a genuinely extreme delivery is not
+# discarded.
+#
+# Measured on happy/林永閎.MOV, the minimum over the clip was 15.4 degrees at
+# frame 17, where MediaPipe placed the wrist back toward the shoulder at 0.78
+# confidence. Taking an extremum lets the single worst-detected frame become
+# the metric, so an impossible value is not a curiosity in the tail — it is
+# the answer.
+#
+# This catches only what anatomy rules out. A wrist misplaced by 40 pixels
+# still produces a possible angle, and finding those needs a second detector
+# to disagree with the first (M4).
+MIN_ELBOW_DEGREES = 25.0
 
 
 def _line(frame: Frame, left: str, right: str) -> tuple[tuple[float, float], ...] | None:
@@ -135,6 +157,10 @@ def elbow_valgus(frame: Frame, *, side: str) -> float | None:
     supply it. This is the planar angle, useful against your own previous
     session and not against a published threshold.
 
+    Returns ``None`` below :data:`MIN_ELBOW_DEGREES`, because an angle a
+    joint cannot reach is a detector failure rather than a very flexed arm —
+    see that constant.
+
     Args:
         side: ``"L"`` or ``"R"``.
 
@@ -158,7 +184,8 @@ def elbow_valgus(frame: Frame, *, side: str) -> float | None:
     if distance(shoulder, elbow) < MIN_SPAN_PX or distance(elbow, wrist) < MIN_SPAN_PX:
         return None
 
-    return angle_between(shoulder, elbow, wrist)
+    angle = angle_between(shoulder, elbow, wrist)
+    return None if angle < MIN_ELBOW_DEGREES else angle
 
 
 def stride_length(frame: Frame) -> float | None:

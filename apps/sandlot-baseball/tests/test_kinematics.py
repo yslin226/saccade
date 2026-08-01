@@ -13,6 +13,7 @@ import math
 
 import pytest
 from sandlot.domain.kinematics import (
+    MIN_ELBOW_DEGREES,
     MIN_SPAN_PX,
     centre_of_mass,
     elbow_valgus,
@@ -198,6 +199,36 @@ class TestElbowValgus:
         looks fine and describes the wrong limb."""
         with pytest.raises(ValueError, match="side must be"):
             elbow_valgus(upright(), side="left")
+
+    def test_an_anatomically_impossible_angle_gives_nothing(self) -> None:
+        """15 degrees is a hand folded past the biceps. Measured for real on
+        happy/林永閎.MOV at frame 17, where MediaPipe put the wrist back
+        toward the shoulder at 0.78 confidence — and since the metric takes
+        an extremum, that one frame became the answer."""
+        folded = frame(
+            joint("R shoulder", 408, 520),
+            joint("R elbow", 354, 605),
+            joint("R wrist", 413, 552),
+        )
+        assert elbow_valgus(folded, side="R") is None
+
+    def test_a_tight_but_possible_bend_is_kept(self) -> None:
+        """The threshold sits below anatomical maximum flexion, so a
+        genuinely extreme delivery is not discarded."""
+        tight = frame(
+            joint("R shoulder", 100, 100),
+            joint("R elbow", 200, 100),
+            joint("R wrist", 130, 155),
+        )
+        angle = elbow_valgus(tight, side="R")
+        assert angle is not None
+        assert MIN_ELBOW_DEGREES <= angle < 45.0
+
+    def test_the_limit_is_below_maximum_human_flexion(self) -> None:
+        """Anatomy leaves roughly 30 to 35 degrees between upper arm and
+        forearm at full flexion. A threshold above that would discard real
+        deliveries; one at zero would catch nothing."""
+        assert 0.0 < MIN_ELBOW_DEGREES < 30.0
 
 
 class TestStrideLength:
