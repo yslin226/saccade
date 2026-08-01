@@ -7,4 +7,6 @@ anyway. Rule 9 constrains how Postgres is used, not when one has to exist.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from sandlot.infrastructure.persistence.json_repo import JsonSessionRepo
+
+__all__ = ["JsonSessionRepo"]

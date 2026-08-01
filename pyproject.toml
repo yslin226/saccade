@@ -88,6 +88,10 @@ strict = true
 [[tool.mypy.overrides]]
 module = ["cv2.*", "cv2", "mediapipe.*", "mediapipe", "ultralytics.*", "ultralytics"]
 ignore_missing_imports = true
+# ultralytics ships a py.typed marker but re-exports YOLO through a plain
+# assignment rather than __all__, so a strict check calls the import an
+# error. The symbol is the package's documented entry point.
+implicit_reexport = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

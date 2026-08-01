@@ -9,4 +9,15 @@ decoding separated from detection. See ``docs/plans/M3-sandlot-skeleton.md``.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from sandlot.infrastructure.vision.objects import Detected, YOLODetector
+from sandlot.infrastructure.vision.pose import MediaPipePose
+from sandlot.infrastructure.vision.video import OpenCVVideo, VideoFile, file_sha256
+
+__all__ = [
+    "Detected",
+    "MediaPipePose",
+    "OpenCVVideo",
+    "VideoFile",
+    "YOLODetector",
+    "file_sha256",
+]
