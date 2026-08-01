@@ -96,6 +96,9 @@ uv run mypy src apps/sandlot-baseball/src
 4. **架構守衛通過** —— app 可以 import mediapipe,引擎不行。
    現有的 `tests/test_architecture.py` 只掃 `src/saccade`,需確認 app 加入後仍只掃引擎。
 
+5. **spec 5.2 列的三個 use case 都存在** —— `analyze_pitch`、`analyze_swing`、
+   `compare_sessions`。少一個就不算 M3 完成,不得以「M4 再補」結案。
+
 ---
 
 ## Task 1 — workspace 與骨架
@@ -199,7 +202,23 @@ Port 介面照 Postgres 的形狀設計,即使 M3 的實作是 JSON 檔。
 
 ---
 
-## Task 5 — CLI
+## Task 5 — `analyze_swing`
+
+Spec 5.2 列了三個 use case,M3 只寫了兩個。這個補上第三個,**排在 Task 4 之後
+而非砍掉**,理由見文末「與 spec 5.2 的差異」。
+
+前提(Task 4 的產出):`DetectPort` 能回傳球棒的 bbox 序列。
+
+- 拆 `measure()`:共用的人體指標 vs 各自的專屬指標,**不是複製一份**
+- 打擊專屬:揮棒平面角(球棒軌跡擬合)、觸擊點
+- 投球專屬:維持現況
+
+**驗收**:兩個 use case 共用同一份人體指標程式碼;揮棒平面角有測試,含球棒偵測失敗時
+回傳 None 的退化案例。
+
+---
+
+## Task 6 — CLI
 
 `interfaces/cli/`
 - `sandlot analyze <video> [--repeat N]`
@@ -221,7 +240,35 @@ Port 介面照 Postgres 的形狀設計,即使 M3 的實作是 JSON 檔。
 
 ---
 
+## 與 spec 5.2 的差異
+
+Spec 的目錄結構是最終形態。以下為刻意未建,**每一項都指定了補的時點與判準** ——
+「之後再說」不寫下來就是技術債。
+
+| spec 有 | 現況 | 何時補 | 補的前提 |
+|---|---|---|---|
+| `infrastructure/vector/` | 缺 | M5 | RAG 開資料庫時一起 |
+| `interfaces/api/` | 缺 | M6 | 前端存在後,介面才有依據 |
+| `frontend/`、`knowledge/` | 缺 | M6 / M5 | 同上 |
+| `ports/VectorPort` | 缺 | M5 | 現在寫等於猜 RAG 介面 |
+| `use_cases/analyze_swing.py` | **缺** | **Task 4 之後,M3 內** | 見下 |
+
+### `analyze_swing` 為何延到 Task 4 之後
+
+不是砍掉,是排序。現在寫只能複製 `analyze_pitch`:
+
+- `measure()` 目前算的是**通用人體指標**(髖肩分離、重心、動力鏈),投打共用
+- 打擊真正分歧的是**揮棒平面角**與**觸擊點**,兩者都要 YOLO 追球棒軌跡
+- YOLO 在 Task 4 才接上
+
+在 Task 4 之前寫,會產生一個與 `analyze_pitch` 內容重複、且 Task 4 後必須重寫的檔案。
+
+**Task 4 完成後立刻補,不得延到 M4。** 判準:`DetectPort` 能回傳球棒的 bbox 序列。
+屆時 `measure()` 拆為共用部分與各自部分,而不是複製。
+
+---
+
 ## 不做
 
-FastAPI、Postgres、pgvector、frontend、RAG、追問機制。
-這些在 M5–M6,現在做等於在需求還沒被使用驗證前先蓋。
+FastAPI、Postgres、pgvector、frontend、RAG、追問機制 —— 時點見上表。
+現在做等於在需求還沒被使用驗證前先蓋。
