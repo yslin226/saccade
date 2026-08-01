@@ -10,4 +10,34 @@ testable without a video file, a detector, or a disk.
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from sandlot.application.ports import (
+    DecodedVideo,
+    Detection,
+    DetectPort,
+    PosePort,
+    SessionRepoPort,
+    VideoPort,
+)
+from sandlot.application.use_cases import (
+    AnalysisFailedError,
+    SessionNotFoundError,
+    analyze_pitch,
+    compare_sessions,
+    compare_with_previous,
+    measure,
+)
+
+__all__ = [
+    "AnalysisFailedError",
+    "DecodedVideo",
+    "DetectPort",
+    "Detection",
+    "PosePort",
+    "SessionNotFoundError",
+    "SessionRepoPort",
+    "VideoPort",
+    "analyze_pitch",
+    "compare_sessions",
+    "compare_with_previous",
+    "measure",
+]
