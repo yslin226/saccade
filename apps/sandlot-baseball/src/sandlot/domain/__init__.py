@@ -28,6 +28,7 @@ from sandlot.domain.models import (
     Session,
     Toolchain,
 )
+from sandlot.domain.swing import bat_path, swing_plane_angle, weight_transfer
 
 __all__ = [
     "Frame",
@@ -37,6 +38,7 @@ __all__ = [
     "MetricDelta",
     "Session",
     "Toolchain",
+    "bat_path",
     "centre_of_mass",
     "changed",
     "difference",
@@ -44,5 +46,7 @@ __all__ = [
     "hip_shoulder_separation",
     "kinetic_chain_order",
     "stride_length",
+    "swing_plane_angle",
     "torso_length",
+    "weight_transfer",
 ]

@@ -24,8 +24,8 @@ from sandlot.application.use_cases import (
     analyze_pitch,
     compare_sessions,
     compare_with_previous,
-    measure,
 )
+from sandlot.application.use_cases.analyze_pitch import measure
 from sandlot.domain.comparison import IncomparableSessionsError
 from sandlot.domain.models import Frame, JointReading, Metric, Session, Toolchain
 

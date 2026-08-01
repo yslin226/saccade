@@ -22,9 +22,10 @@ from sandlot.application.use_cases import (
     AnalysisFailedError,
     SessionNotFoundError,
     analyze_pitch,
+    analyze_swing,
+    bat_boxes,
     compare_sessions,
     compare_with_previous,
-    measure,
 )
 
 __all__ = [
@@ -37,7 +38,8 @@ __all__ = [
     "SessionRepoPort",
     "VideoPort",
     "analyze_pitch",
+    "analyze_swing",
+    "bat_boxes",
     "compare_sessions",
     "compare_with_previous",
-    "measure",
 ]
