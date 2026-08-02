@@ -67,6 +67,77 @@ M5 建 RAG 時本來就要開資料庫,一起換。規則 9 規範的是「用 P
 
 ---
 
+## 驗收結果(2026-08-02,全數通過)
+
+```
+uv run pytest                                930 passed
+uv run ruff check src tests benchmarks apps  All checks passed!
+uv run ruff format --check .                 103 files already formatted
+uv run mypy src apps/sandlot-baseball/src    no issues in 44 source files
+```
+
+**1. 同一支影片十次,數字完全相同**
+
+```
+$ uv run sandlot --data-dir <tmp> analyze happy/林永閎.MOV --stride 20 --repeat 10
+
+  run   1  9303e46edcc3f4246bb93b59
+  run   2  9303e46edcc3f4246bb93b59
+  ...
+  run  10  9303e46edcc3f4246bb93b59
+
+session   20260802T062635-08bbc85a
+video     08bbc85aaf70d7d8…  23 frames @ 30fps
+detectors mediapipe 1.0.0, ultralytics 8.4.113
+
+metric                             value  frames            unit
+hip_shoulder_separation          63.9041  frame 21          degrees
+stride_length                     1.9418  frame 21          torso lengths
+elbow_flexion_L                  29.4803  frame 17          degrees
+elbow_flexion_R                  32.9679  frame 19          degrees
+kinetic_chain_order               1.0000  frame 0           fraction in order
+
+  hip_shoulder_separation: maximum over the movement
+  stride_length: frame of peak hip-shoulder separation
+  elbow_flexion_L: most flexed over the movement
+  elbow_flexion_R: most flexed over the movement
+
+distinct fingerprints across 10 runs: 1
+```
+
+每個數字都帶幀號(規則 8),每個指標都說明取自哪一刻。
+
+**2. 兩支影片能算出差異**
+
+```
+$ uv run sandlot --data-dir <tmp> compare 20260802T062705-08bbc85a 20260802T062719-08bbc85a
+
+metric                          before     after    change  unit
+elbow_flexion_L                 29.480    29.480    +0.000  degrees
+elbow_flexion_R                 32.968    32.700    -0.267  degrees
+hip_shoulder_separation         63.904    47.710   -16.194  degrees
+kinetic_chain_order              1.000     0.333    -0.667  fraction in order
+stride_length                    1.942     0.895    -1.047  torso lengths
+```
+
+**3. `domain/` 100% 行覆蓋**
+
+```
+apps\sandlot-baseball\src\sandlot\domain\comparison.py      23      0   100%
+apps\sandlot-baseball\src\sandlot\domain\kinematics.py     104      0   100%
+apps\sandlot-baseball\src\sandlot\domain\models.py          64      0   100%
+apps\sandlot-baseball\src\sandlot\domain\swing.py           26      0   100%
+```
+
+`application/use_cases/` 亦為 100%。
+
+**4. 架構守衛** —— 引擎的 AST 掃描僅掃 `src/saccade`,app 自有一套依賴方向測試
+(`tests/test_skeleton.py`),兩者皆綠。
+
+**5. spec 5.2 三個 use case** —— `analyze_pitch`、`analyze_swing`、`compare_sessions` 皆存在。
+
+---
+
 ## 驗收條件
 
 ```bash

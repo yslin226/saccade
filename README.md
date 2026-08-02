@@ -147,7 +147,9 @@ touch the filesystem. Both are AST scans and both fail the build. Reasoning in
 
 - [x] **M0–M2** — the loop, measurement tools, and the ablation that settled
       what works
-- [ ] **M3** — video, where the detector itself is unreliable
+- [x] **M3** — the first application: [Sandlot Baseball](apps/sandlot-baseball/),
+      measuring a delivery and comparing it against your own history. Ten
+      analyses of one video produce identical numbers.
 - [ ] **M4** — active vision on occluded and motion-blurred frames
 - [ ] **M5** — retrieval-backed interpretation
 - [ ] **M6** — PyPI release

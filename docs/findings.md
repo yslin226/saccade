@@ -134,6 +134,66 @@ measures whether the VLM picks out the bad frames — it does — and cannot
 measure whether the reason it gives is the right one. Self-consistency at 67%
 means one question is not enough.
 
+## The detectors are bitwise reproducible
+
+M3's acceptance condition is that ten analyses of one video give identical
+numbers, and nothing had checked whether the detectors permit that — neither
+MediaPipe nor Ultralytics promises it. Measured before writing the
+application, since every metric would have inherited the answer.
+
+`happy/林永閎.MOV`, 12 frames at 1920×1080:
+
+| | |
+|---|---|
+| same process, 5 runs | MediaPipe and YOLO both identical |
+| separate processes, 5 runs | `mediapipe=1e94edf3ee6360162f634472`, all equal |
+
+No seed pinning, CPU-only mode or coordinate rounding needed. Two conditions
+the result depends on, both now contracts in the code rather than notes:
+`RunningMode.IMAGE` rather than `VIDEO`, since VIDEO carries cross-frame
+state; and decoding separated from detection, because re-decoding inside each
+run measures the decoder too, and a decoder that drifts looks exactly like a
+detector that drifts.
+
+Not measured: across machines. XNNPACK selects kernels by CPU instruction
+set, so a second machine very likely differs.
+
+Through the whole use case rather than the detectors alone, ten runs:
+
+```
+hip_shoulder_separation          63.9041 degrees           frame 21
+stride_length                     1.9418 torso lengths     frame 21
+elbow_flexion_L                  29.4803 degrees           frame 17
+elbow_flexion_R                  32.9679 degrees           frame 19
+kinetic_chain_order               1.0000 fraction in order frame 0
+
+distinct fingerprints across 10 runs: 1
+```
+
+## An extremum lets the worst frame become the answer
+
+The same run first produced `elbow_flexion_R = 15.4 degrees`, which no elbow
+reaches. Frame 17 had MediaPipe placing the wrist back toward the shoulder at
+0.78 confidence — the anti-correlation this project measured at AUROC 0.358,
+appearing where it does most damage.
+
+Metrics are taken as an extremum over the delivery, so the single
+worst-detected frame of 23 was the metric.
+
+| | before | after |
+|---|---|---|
+| elbow_flexion_L | 24.2° | 29.5° |
+| elbow_flexion_R | **15.4°** | **33.0°** |
+| ten runs, one fingerprint | ✅ | ✅ |
+
+The fix refuses angles below 25 degrees as detector failures rather than
+tight bends. It catches only what anatomy rules out: a wrist misplaced by
+forty pixels still produces a plausible angle, and finding those needs a
+second detector to disagree with the first.
+
+Consistency passed either way, because the same error recurred identically —
+which is worth stating on its own. Reproducibility is not accuracy.
+
 ## Retracted
 
 An earlier AUROC of 0.713 for detector disagreement was measuring a bug.
