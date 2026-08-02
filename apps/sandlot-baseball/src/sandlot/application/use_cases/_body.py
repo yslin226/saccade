@@ -16,6 +16,7 @@ in a frame, this says which frame is the interesting one.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from sandlot.domain.kinematics import (
@@ -33,7 +34,7 @@ __all__ = ["EXPECTED_CHAIN", "body_metrics", "peak", "sequence_score"]
 EXPECTED_CHAIN = ("hips", "shoulders", "elbow", "wrist")
 
 
-def body_metrics(frames: list[Frame]) -> list[Metric]:
+def body_metrics(frames: Sequence[Frame]) -> list[Metric]:
     """Every body metric that could be computed, each citing its frames.
 
     A metric that could not be computed anywhere is absent rather than
@@ -102,7 +103,7 @@ def body_metrics(frames: list[Frame]) -> list[Metric]:
     return metrics
 
 
-def peak(frames: list[Frame], rule: Any, *, most: Any = max) -> tuple[int, float] | None:
+def peak(frames: Sequence[Frame], rule: Any, *, most: Any = max) -> tuple[int, float] | None:
     """Where a per-frame rule reached its extreme, and what it read there.
 
     Returns the *list* index alongside the value so the caller can reach the
@@ -113,7 +114,7 @@ def peak(frames: list[Frame], rule: Any, *, most: Any = max) -> tuple[int, float
     return most(usable, key=lambda pair: pair[1]) if usable else None
 
 
-def sequence_score(order: list[str]) -> float:
+def sequence_score(order: Sequence[str]) -> float:
     """How much of the ground-up sequence the movement kept.
 
     The fraction of adjacent pairs in the expected order. 1.0 is textbook;

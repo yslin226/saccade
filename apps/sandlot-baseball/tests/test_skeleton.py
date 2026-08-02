@@ -146,12 +146,13 @@ class TestTheCLI:
 
         assert main([]) == 1
 
-    def test_an_unimplemented_command_fails_loudly(self) -> None:
-        """Exit 2, not 0. A command that appears to succeed while measuring
-        nothing is worse than one that refuses."""
-        from sandlot.interfaces.cli import main
+    def test_a_missing_video_fails_rather_than_reporting_nothing(self, tmp_path: Path) -> None:
+        """A command that appears to succeed while measuring nothing is worse
+        than one that refuses. Task 1 asserted a placeholder here; the
+        behaviour is now real and the exit code is UNREADABLE."""
+        from sandlot.interfaces.cli import UNREADABLE, main
 
-        assert main(["analyze", "video.mov"]) == 2
+        assert main(["--data-dir", str(tmp_path), "analyze", "absent.mov"]) == UNREADABLE
 
     def test_the_data_dir_defaults_outside_the_repo(self) -> None:
         """So analysing a video never leaves files in a checkout."""

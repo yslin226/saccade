@@ -16,6 +16,7 @@ would let a caller undo that without noticing.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
@@ -46,7 +47,7 @@ class DecodedVideo(Protocol):
     def fps(self) -> float: ...
 
     @property
-    def images(self) -> list[Any]:
+    def images(self) -> Sequence[Any]:
         """Decoded frames, in order. Typed loosely because the domain never
         sees them — only the detectors do, and they want numpy arrays."""
         ...
@@ -89,7 +90,7 @@ class PosePort(Protocol):
         """
         ...
 
-    def detect(self, images: list[Any], *, fps: float) -> list[Frame]:
+    def detect(self, images: Any, *, fps: float) -> Sequence[Frame]:
         """One :class:`Frame` per image, in order.
 
         A frame where nothing was found still appears, with no joints. The
@@ -118,9 +119,16 @@ class Detection(Protocol):
 class DetectPort(Protocol):
     """Anything that can find objects — the bat and the ball."""
 
-    def detect(self, images: list[Any]) -> list[list[Detection]]:
+    def detect(self, images: Any) -> Sequence[Sequence[Detection]]:
         """Detections per image, in order. An empty list for a frame where
-        nothing was found, so indices keep lining up with the video."""
+        nothing was found, so indices keep lining up with the video.
+
+        ``Sequence`` rather than ``list`` because a list is invariant: an
+        implementation returning its own concrete detection type would not
+        satisfy a port promising ``list[list[Detection]]``, even though every
+        such object structurally *is* a Detection. Covariance is what lets a
+        detector be written without importing this module.
+        """
         ...
 
 

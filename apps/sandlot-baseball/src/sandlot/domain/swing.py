@@ -16,6 +16,8 @@ single camera can actually measure.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from saccade.geometry import Point, bearing, distance, smooth
 from sandlot.domain.kinematics import centre_of_mass, torso_length
 from sandlot.domain.models import Frame
@@ -39,7 +41,7 @@ MIN_SWING_FRAMES = 4
 MIN_BAT_TRAVEL_PX = 30.0
 
 
-def bat_path(detections: list[tuple[float, float, float, float] | None]) -> list[Point]:
+def bat_path(detections: Sequence[tuple[float, float, float, float] | None]) -> list[Point]:
     """Bat centres, one per frame it was found in.
 
     Takes bounding boxes rather than a detector, so this is testable against
@@ -61,7 +63,7 @@ def bat_path(detections: list[tuple[float, float, float, float] | None]) -> list
 
 
 def swing_plane_angle(
-    detections: list[tuple[float, float, float, float] | None],
+    detections: Sequence[tuple[float, float, float, float] | None],
 ) -> float | None:
     """The direction the bat travelled, in degrees, in [0, 180).
 
@@ -90,7 +92,7 @@ def swing_plane_angle(
     return angle - 180.0 if angle >= 180.0 else angle
 
 
-def weight_transfer(frames: list[Frame]) -> float | None:
+def weight_transfer(frames: Sequence[Frame]) -> float | None:
     """How far the centre of mass moved, in torso lengths.
 
     The quantity Driveline's data puts ahead of bat speed. Normalised by the

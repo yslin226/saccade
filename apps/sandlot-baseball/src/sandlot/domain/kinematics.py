@@ -22,6 +22,8 @@ the ones that are easy to see.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from saccade.geometry import angle_between, centroid, distance
 from sandlot.domain.models import Frame
 
@@ -257,7 +259,7 @@ def centre_of_mass(frame: Frame) -> tuple[float, float] | None:
 
 
 def kinetic_chain_order(
-    frames: list[Frame],
+    frames: Sequence[Frame],
     *,
     segments: tuple[str, ...] = ("hips", "shoulders", "elbow", "wrist"),
     side: str = "R",
@@ -307,7 +309,7 @@ def kinetic_chain_order(
 
 
 def _segment_angles(
-    frames: list[Frame], segment: str, *, side: str
+    frames: Sequence[Frame], segment: str, *, side: str
 ) -> list[tuple[int, float] | None]:
     """The angle of one segment in each frame, None where unmeasurable."""
     out: list[tuple[int, float] | None] = []
@@ -336,7 +338,7 @@ def _segment_angle(frame: Frame, segment: str, *, side: str) -> float | None:
     return bearing(line[0], line[1])
 
 
-def _peak_rate(series: list[tuple[int, float] | None]) -> tuple[int, float] | None:
+def _peak_rate(series: Sequence[tuple[int, float] | None]) -> tuple[int, float] | None:
     """Where the angle changed fastest between consecutive measured frames.
 
     Gaps are skipped rather than interpolated across: a rate computed over a

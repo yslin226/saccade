@@ -27,7 +27,9 @@ dependencies = [
 ]
 
 [project.scripts]
-sandlot = "sandlot.interfaces.cli:main"
+# _entry rather than main: a console script's return value is ignored, so a
+# function returning an exit code would always exit 0.
+sandlot = "sandlot.interfaces.cli:_entry"
 
 # Points at the engine in this workspace rather than at PyPI. Deleting this
 # block is the whole of what splitting this app into its own repo requires

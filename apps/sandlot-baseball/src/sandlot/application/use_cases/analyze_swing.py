@@ -13,6 +13,7 @@ premise is that a measurement with nothing behind it is worse than silence.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -79,7 +80,7 @@ def analyze_swing(
 
 
 def bat_boxes(
-    detections: list[list[Any]],
+    detections: Sequence[Sequence[Any]],
 ) -> list[tuple[float, float, float, float] | None]:
     """The bat's box per frame, ``None`` where it was not found.
 
@@ -103,9 +104,9 @@ def bat_boxes(
 
 
 def measure(
-    frames: list[Frame],
+    frames: Sequence[Frame],
     *,
-    bat: list[tuple[float, float, float, float] | None] | None = None,
+    bat: Sequence[tuple[float, float, float, float] | None] | None = None,
 ) -> list[Metric]:
     """Every hitting metric that could be computed.
 

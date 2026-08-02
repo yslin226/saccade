@@ -12,6 +12,7 @@ object detector loses exactly when the swing is most interesting.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
@@ -79,7 +80,7 @@ def analyze_pitch(
     return session
 
 
-def measure(frames: list[Frame]) -> list[Metric]:
+def measure(frames: Sequence[Frame]) -> list[Metric]:
     """Every pitching metric that could be computed.
 
     All of them are body metrics. Kept as a named function rather than an
