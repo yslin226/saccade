@@ -37,21 +37,41 @@ __all__ = [
     "torso_length",
 ]
 
-# Segment masses as a fraction of body mass, from Dempster's cadaver study
-# (1955) as tabulated in Winter, *Biomechanics and Motor Control of Human
-# Movement*. Only the joints this project tracks appear, so the weights are
-# normalised over whichever of them a frame actually contains — an estimate
-# of the whole body's centre from a partial skeleton, not a claim to have
-# measured it.
+# Roughly how the body's mass distributes over the points this project
+# tracks. Segment fractions are the standard ones from Dempster's cadaver
+# data as tabulated in Winter, *Biomechanics and Motor Control of Human
+# Movement*; how they are *attributed to landmarks* is this project's own
+# approximation and is where the error lives.
+#
+# The trunk is about half of body mass and has no landmark of its own, so it
+# is split across the four points that bound it — shoulders and hips, an
+# eighth each. That places the trunk's mass at the centre of those four
+# points, which is close to where it actually sits and is the whole reason
+# this is called an approximation.
+#
+# An earlier version gave those four points zero weight, on the reasoning
+# that they are the endpoints of lines rather than masses. That silently
+# discarded half the body: the "centre of mass" it computed was the average
+# position of the limbs, and a hitter who rotated their trunk without moving
+# their feet registered as having transferred no weight.
+#
+# Limb fractions are halved where a landmark stands for a segment shared with
+# its neighbour, so the total over a full skeleton comes to roughly 1.0. The
+# weights are normalised over whichever landmarks a frame actually contains,
+# so a frame missing an ankle still reports a centre — shifted, and honestly
+# so, since that mass is genuinely unaccounted for.
 COM_WEIGHTS = {
-    "L shoulder": 0.0,
-    "R shoulder": 0.0,
+    # Trunk (~0.50), split across the four landmarks bounding it.
+    "L shoulder": 0.125,
+    "R shoulder": 0.125,
+    "L hip": 0.125,
+    "R hip": 0.125,
+    # Upper arm (~0.028 each) and forearm-plus-hand (~0.022 each).
     "L elbow": 0.028,
     "R elbow": 0.028,
     "L wrist": 0.022,
     "R wrist": 0.022,
-    "L hip": 0.0,
-    "R hip": 0.0,
+    # Thigh (~0.100 each) and shank-plus-foot (~0.0465 each).
     "L knee": 0.100,
     "R knee": 0.100,
     "L ankle": 0.0465,
@@ -68,21 +88,22 @@ MIN_SPAN_PX = 20.0
 # The tightest an elbow bends. Below this the arm is not very flexed — the
 # detector has misplaced a joint.
 #
-# Anatomy puts maximum active flexion around 145 degrees of travel from
-# straight, leaving roughly 30 to 35 degrees between the upper arm and the
-# forearm; a hand cannot be brought closer to the shoulder than the biceps
-# allows. 25 is a little below that, so a genuinely extreme delivery is not
-# discarded.
+# What this rests on, stated rather than dressed up: on happy/林永閎.MOV the
+# minimum over the clip was 15.4 degrees at frame 17, where MediaPipe placed
+# the wrist back toward the shoulder at 0.78 confidence. Taking an extremum
+# lets the single worst-detected frame become the metric, so an impossible
+# value is not a curiosity in the tail — it is the answer.
 #
-# Measured on happy/林永閎.MOV, the minimum over the clip was 15.4 degrees at
-# frame 17, where MediaPipe placed the wrist back toward the shoulder at 0.78
-# confidence. Taking an extremum lets the single worst-detected frame become
-# the metric, so an impossible value is not a curiosity in the tail — it is
-# the answer.
+# 25 is a conservative guess at where "impossible" starts, not a figure from
+# a source. Maximum active elbow flexion is usually quoted as travel from
+# straight rather than as the angle left between the segments, and this
+# project has not checked what that converts to. If it turns out real
+# deliveries reach below 25, this discards them silently — which is why the
+# figure is written down here rather than left implicit in a comparison.
 #
-# This catches only what anatomy rules out. A wrist misplaced by 40 pixels
-# still produces a possible angle, and finding those needs a second detector
-# to disagree with the first (M4).
+# It catches only what anatomy rules out anyway. A wrist misplaced by 40
+# pixels still produces a possible angle, and finding those needs a second
+# detector to disagree with the first (M4).
 MIN_ELBOW_DEGREES = 25.0
 
 
@@ -216,6 +237,11 @@ def centre_of_mass(frame: Frame) -> tuple[float, float] | None:
     explains almost none of exit velocity (R² = 0.097) while weight transfer
     explains a further 37.8%. Tracking where it goes across a swing is the
     point of measuring it at all.
+
+    An approximation, and the approximation is in :data:`COM_WEIGHTS` rather
+    than here — the trunk has no landmark of its own and is spread over the
+    four points bounding it. Good enough to say a hitter's mass moved further
+    this session than last; not good enough to publish as a centre of mass.
     """
     weighted: list[tuple[float, float]] = []
     for reading in frame.joints:
@@ -231,7 +257,10 @@ def centre_of_mass(frame: Frame) -> tuple[float, float] | None:
 
 
 def kinetic_chain_order(
-    frames: list[Frame], *, segments: tuple[str, ...] = ("hips", "shoulders", "elbow", "wrist")
+    frames: list[Frame],
+    *,
+    segments: tuple[str, ...] = ("hips", "shoulders", "elbow", "wrist"),
+    side: str = "R",
 ) -> list[str] | None:
     """Which segment reached peak angular speed first, in order.
 
@@ -240,16 +269,31 @@ def kinetic_chain_order(
     coaches mean by "all arm", and it is visible in the timing of the peaks
     rather than in any single frame.
 
+    Args:
+        frames: The movement, in order.
+        segments: Which links to time. The default is the full chain.
+        side: Which arm the ``elbow`` and ``wrist`` segments refer to. The
+            default of ``"R"`` is a default, not an assumption — a
+            left-hander must pass ``"L"`` or the chain will be timed against
+            the arm that barely moves, which produces an ordering that looks
+            reasonable and describes the wrong limb.
+
     Returns the segment names ordered by when each peaked, or None when
     fewer than three frames were given — a peak needs neighbours on both
     sides to be a peak rather than an endpoint.
+
+    Raises:
+        ValueError: If ``side`` is not ``"L"`` or ``"R"``, or a segment is
+            not recognised.
     """
+    if side not in ("L", "R"):
+        raise ValueError(f"side must be 'L' or 'R', got {side!r}")
     if len(frames) < 3:
         return None
 
     peaks: dict[str, tuple[int, float]] = {}
     for segment in segments:
-        series = _segment_angles(frames, segment)
+        series = _segment_angles(frames, segment, side=side)
         peak = _peak_rate(series)
         if peak is not None:
             peaks[segment] = peak
@@ -262,16 +306,18 @@ def kinetic_chain_order(
     return sorted(peaks, key=lambda name: (peaks[name][0], segments.index(name)))
 
 
-def _segment_angles(frames: list[Frame], segment: str) -> list[tuple[int, float] | None]:
+def _segment_angles(
+    frames: list[Frame], segment: str, *, side: str
+) -> list[tuple[int, float] | None]:
     """The angle of one segment in each frame, None where unmeasurable."""
     out: list[tuple[int, float] | None] = []
     for index, frame in enumerate(frames):
-        angle = _segment_angle(frame, segment)
+        angle = _segment_angle(frame, segment, side=side)
         out.append(None if angle is None else (index, angle))
     return out
 
 
-def _segment_angle(frame: Frame, segment: str) -> float | None:
+def _segment_angle(frame: Frame, segment: str, *, side: str) -> float | None:
     from saccade.geometry import bearing
 
     if segment == "hips":
@@ -279,9 +325,9 @@ def _segment_angle(frame: Frame, segment: str) -> float | None:
     elif segment == "shoulders":
         line = _line(frame, "L shoulder", "R shoulder")
     elif segment == "elbow":
-        return elbow_valgus(frame, side="R")
+        return elbow_valgus(frame, side=side)
     elif segment == "wrist":
-        line = _line(frame, "R elbow", "R wrist")
+        line = _line(frame, f"{side} elbow", f"{side} wrist")
     else:
         raise ValueError(f"unknown segment {segment!r}")
 

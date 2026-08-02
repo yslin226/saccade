@@ -224,11 +224,13 @@ class TestElbowValgus:
         assert angle is not None
         assert MIN_ELBOW_DEGREES <= angle < 45.0
 
-    def test_the_limit_is_below_maximum_human_flexion(self) -> None:
-        """Anatomy leaves roughly 30 to 35 degrees between upper arm and
-        forearm at full flexion. A threshold above that would discard real
-        deliveries; one at zero would catch nothing."""
-        assert 0.0 < MIN_ELBOW_DEGREES < 30.0
+    def test_the_limit_is_a_stated_guess_not_a_sourced_figure(self) -> None:
+        """25 is where this project guessed "impossible" starts, having
+        measured 15.4 on a real clip. It has not been checked against a
+        source, and a threshold set too high discards real deliveries
+        silently — so the number is pinned here to make a change to it
+        deliberate."""
+        assert MIN_ELBOW_DEGREES == 25.0
 
 
 class TestStrideLength:
@@ -317,9 +319,12 @@ class TestCentreOfMass:
         assert start is not None and by_knees is not None and by_wrists is not None
         assert abs(by_knees[0] - start[0]) > abs(by_wrists[0] - start[0])
 
-    def test_joints_with_no_weight_do_not_move_it(self) -> None:
-        """Shoulders and hips are endpoints of lines, not masses in this
-        model — the trunk's mass is not attributed to them."""
+    def test_the_trunk_carries_weight(self) -> None:
+        """It is about half of body mass and has no landmark of its own, so
+        it is spread over the four points bounding it. An earlier version
+        gave those zero weight and silently discarded half the body — a
+        hitter who rotated their trunk without moving their feet registered
+        as having transferred nothing."""
         with_trunk = frame(
             joint("L knee", 100, 500),
             joint("R knee", 200, 500),
@@ -327,10 +332,41 @@ class TestCentreOfMass:
             joint("R shoulder", 950, 100),
         )
         without = frame(joint("L knee", 100, 500), joint("R knee", 200, 500))
-        assert centre_of_mass(with_trunk) == pytest.approx(centre_of_mass(without))
 
-    def test_a_frame_with_no_weighted_joints_gives_nothing(self) -> None:
-        assert centre_of_mass(frame(joint("L shoulder", 0, 0))) is None
+        moved = centre_of_mass(with_trunk)
+        legs_only = centre_of_mass(without)
+        assert moved is not None and legs_only is not None
+        assert moved[0] > legs_only[0] + 100
+
+    def test_the_trunk_outweighs_the_arms(self) -> None:
+        """Half the body against a few percent. A model where a wrist moved
+        the centre as much as a shoulder would be describing a different
+        animal."""
+        by_shoulders = frame(
+            joint("L knee", 100, 500),
+            joint("R knee", 200, 500),
+            joint("L shoulder", 900, 100),
+            joint("R shoulder", 950, 100),
+        )
+        by_wrists = frame(
+            joint("L knee", 100, 500),
+            joint("R knee", 200, 500),
+            joint("L wrist", 900, 100),
+            joint("R wrist", 950, 100),
+        )
+        base = centre_of_mass(frame(joint("L knee", 100, 500), joint("R knee", 200, 500)))
+        shoulders = centre_of_mass(by_shoulders)
+        wrists = centre_of_mass(by_wrists)
+        assert base is not None and shoulders is not None and wrists is not None
+        assert abs(shoulders[0] - base[0]) > abs(wrists[0] - base[0])
+
+    def test_a_single_tracked_joint_still_gives_a_centre(self) -> None:
+        """Shifted, and honestly so: the rest of the mass is genuinely
+        unaccounted for, and the caller can see how few joints were found."""
+        assert centre_of_mass(frame(joint("L shoulder", 7, 9))) == pytest.approx((7.0, 9.0))
+
+    def test_a_frame_with_no_tracked_joints_gives_nothing(self) -> None:
+        assert centre_of_mass(frame(JointReading(name="nose", x=1, y=2, confidence=0.9))) is None
 
     def test_an_empty_frame_gives_nothing(self) -> None:
         assert centre_of_mass(frame()) is None
@@ -395,6 +431,57 @@ class TestKineticChainOrder:
         frames = self.rotating({"hips": [0, 10, 20], "shoulders": [0, 10, 20]})
         with pytest.raises(ValueError, match="unknown segment"):
             kinetic_chain_order(frames, segments=("elbows",))
+
+    def test_the_arm_being_timed_can_be_chosen(self) -> None:
+        """It used to be hardcoded to the right. A left-hander was having the
+        chain timed against the arm that barely moves, which produces an
+        ordering that looks reasonable and describes the wrong limb."""
+        left_arm_moves = [
+            frame(
+                joint("L shoulder", 100, 100),
+                joint("L elbow", 200, 100),
+                joint("L wrist", 300, 100 + 40 * i),
+                joint("R shoulder", 100, 400),
+                joint("R elbow", 200, 400),
+                joint("R wrist", 300, 400),
+                index=i,
+            )
+            for i in range(4)
+        ]
+        # Both sides report a peak — a still arm has one, at zero. What
+        # changes is which arm the ordering describes, and the only way to
+        # see that is to give the two arms different timings.
+        assert kinetic_chain_order(left_arm_moves, segments=("wrist",), side="L") == ["wrist"]
+        assert kinetic_chain_order(left_arm_moves, segments=("wrist",), side="R") == ["wrist"]
+
+    def test_the_two_arms_can_order_differently(self) -> None:
+        """The consequence of the previous test, and the reason the argument
+        exists: the left wrist fires before the hips and the right after, so
+        which arm is timed decides whether the chain reads ground-up."""
+        arms = [
+            frame(
+                joint("L hip", 200, 300),
+                joint("R hip", 300, 300 + (80 if i >= 2 else 0)),
+                joint("L elbow", 100, 100),
+                joint("L wrist", 200, 100 + (80 if i >= 1 else 0)),
+                joint("R elbow", 400, 100),
+                joint("R wrist", 500, 100 + (80 if i >= 4 else 0)),
+                index=i,
+            )
+            for i in range(5)
+        ]
+        left = kinetic_chain_order(arms, segments=("hips", "wrist"), side="L")
+        right = kinetic_chain_order(arms, segments=("hips", "wrist"), side="R")
+
+        assert left == ["wrist", "hips"]
+        assert right == ["hips", "wrist"]
+
+    def test_an_unknown_side_is_an_error(self) -> None:
+        """Not a silent fallback to the right arm — the same reason
+        elbow_valgus raises."""
+        frames = self.rotating({"hips": [0, 10, 20], "shoulders": [0, 10, 20]})
+        with pytest.raises(ValueError, match="side must be"):
+            kinetic_chain_order(frames, side="left")
 
     def test_the_elbow_and_wrist_segments_are_recognised(self) -> None:
         """Named in the default segment list, so they must not raise."""
